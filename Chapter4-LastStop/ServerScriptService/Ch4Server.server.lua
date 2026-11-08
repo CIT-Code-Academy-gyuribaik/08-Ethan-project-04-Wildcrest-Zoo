@@ -1409,7 +1409,7 @@ task.spawn(function()
 		task.wait(0.3)
 		if round.active and not round.ending and round.phase >= 6 and os.clock() >= (round.cutsceneUntil or 0) then
 			local id = round.id
-			if round.phase == 6 and inPart(subwayZone) then
+			if round.phase == 6 and (inPart(subwayZone) or playerIn(Vector3.new(-50, -16, 60), Vector3.new(-18, 2, 112))) then
 				setPhase(7)
 				round.respawnCF = CFrame.new(-45, -11, 84)
 				cutscene("arrive", 9, {})
@@ -1735,6 +1735,50 @@ onTrigger(hatchPrompt, function(player)
 		setMarker(sew.Valves.Valve1.Position, "VALVE")
 		ensureThing(mk("SewerThing").Position)
 	end
+end)
+-- ladders: one press carries you up (the shafts are too tight to climb by hand)
+local function ladderRide(player, from, to, dur, done)
+	local st = roster[player]
+	local _, root = charParts(player)
+	if not st or not root or st.zipping or st.hidden then
+		return
+	end
+	st.zipping = true
+	root.Anchored = true
+	local t0 = os.clock()
+	task.spawn(function()
+		while os.clock() - t0 < dur and root.Parent do
+			local k = (os.clock() - t0) / dur
+			root.CFrame = CFrame.new(from:Lerp(to, k))
+			RunService.Heartbeat:Wait()
+		end
+		if root.Parent then
+			root.CFrame = CFrame.new(to)
+			root.Anchored = false
+		end
+		st.zipping = false
+		if done then
+			done()
+		end
+	end)
+end
+onTrigger(prompt(sew.LadderBottom, "Climb Up", "Ladder", 0.3, 8), function(player)
+	local _, root = charParts(player)
+	if not root or round.phase < 19 then
+		return
+	end
+	ladderRide(player, Vector3.new(-60, -55, 1058.3), Vector3.new(-60, -31, 1058.3), 3, function()
+		local _, r = charParts(player)
+		if r then
+			r.CFrame = CFrame.new(-60, -31, 1054)
+		end
+	end)
+end)
+onTrigger(prompt(con.Walkway.LadderTop, "Climb Down", "Ladder", 0.3, 7), function(player)
+	ladderRide(player, Vector3.new(-51.2, -15, 849.2), Vector3.new(-51.2, -31, 849.2), 2.5)
+end)
+onTrigger(prompt(con.Walkway.LadderBottom, "Climb Up", "Ladder", 0.3, 7), function(player)
+	ladderRide(player, Vector3.new(-51.2, -31, 849.2), Vector3.new(-51.2, -15, 849.2), 2.5)
 end)
 -- PART 5: three valves open the gate
 local function nextValve()
