@@ -223,6 +223,12 @@ for _, h in level.HidingSpots:GetChildren() do
 end
 
 local function loadAnims(m)
+	if m.model:GetAttribute("BoneRig") then
+		-- skinned creature: the clients animate its bones themselves
+		m.tracks = {}
+		m.anim = nil
+		return
+	end
 	local animator = m.model.Humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator", m.model.Humanoid)
 	m.tracks = {}
 	for k, id in m.cfg.Anim do

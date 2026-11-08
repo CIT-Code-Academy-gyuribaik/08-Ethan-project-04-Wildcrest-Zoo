@@ -975,6 +975,9 @@ local function makeActor(src, feetPos, lookAt)
 	return act
 end
 local function loadTrack(act, id)
+	if act.model:GetAttribute("BoneRig") then
+		return nil -- the crawler is animated bone by bone instead
+	end
 	if act.tracks[id] then
 		return act.tracks[id]
 	end
@@ -1140,30 +1143,69 @@ local function playIntro()
 	glow.Range = 8
 	glow.Brightness = 0
 	glow.Parent = phone
+	-- Wildcrest's vans roll up outside (they start further down the street)
+	local raid = workspace:FindFirstChild("City") and workspace.City:FindFirstChild("Raid")
+	local vans = {}
+	if raid then
+		for i, v in raid:GetChildren() do
+			if v:IsA("Model") then
+				local home = v:GetPivot()
+				local from = home * CFrame.new(0, 0, 90 + i * 25) -- behind them (they drive forward)
+				table.insert(vans, { m = v, home = home, from = from, delay = i * 0.6 })
+				v:PivotTo(from)
+			end
+		end
+	end
+	-- a squad of SWAT walking into the lobby
+	local squad = {}
+	for i = 1, 4 do
+		local a = makeActor(views:FindFirstChild("Guard"), Vector3.new(-6 + i * 3, 0, -48), Vector3.new(0, 0, -30))
+		if a then
+			actorBase(a, Config.Monsters.Guard.Anim.walk, 0.6)
+			table.insert(squad, { a = a, from = Vector3.new(-6 + i * 3, 0, -48 - i * 2), to = Vector3.new(-3 + i * 1.6, 0, -24 + i) })
+		end
+	end
 	local buzzed = false
 	local lines = {
 		{ 0.5, "Two weeks since you tried to expose Wildcrest. Two weeks of hiding in your apartment." },
 		{ 5, "No job. No proof. Just the feeling that someone is always watching." },
-		{ 10, "Tonight the city is quiet." },
-		{ 16.5, "*BZZZT* - your phone lights up. Unknown number." },
-		{ 19.5, "THEY FOUND YOU. WILDCREST IS IN THE BUILDING. GET OUT NOW.", "UNKNOWN NUMBER" },
-		{ 24, "...Who sent that?", "YOU" },
-		{ 26.5, "" },
+		{ 9.5, "Tonight the city is quiet. Almost." },
+		{ 12.5, "Three black vans. No sirens. No plates." },
+		{ 16, "They don't knock on anyone's door. They walk straight to the elevator." },
+		{ 21, "Twelve floors up, you're asleep." },
+		{ 26.5, "*BZZZT* - your phone lights up. Unknown number." },
+		{ 29.5, "THEY FOUND YOU. WILDCREST IS IN THE BUILDING. GET OUT NOW.", "UNKNOWN NUMBER" },
+		{ 34, "...Who sent that?", "YOU" },
+		{ 36.5, "" },
 	}
 	local shots = {
-		{ 0, 9, function(k) return lerpCF(CFrame.lookAt(Vector3.new(-160, 95, -190), tower), CFrame.lookAt(Vector3.new(-80, 80, -120), tower), k) end },
-		{ 9, 16, function(k) return lerpCF(CFrame.lookAt(Vector3.new(-22, 70, -75), Vector3.new(-21, 150, -32)), CFrame.lookAt(Vector3.new(-21.5, F12 + 6, -44), Vector3.new(-21.5, F12 + 5, -30)), k) end },
-		{ 16, 24, function(k) return lerpCF(CFrame.lookAt(Vector3.new(-29, F12 + 7, -28.5), Vector3.new(-36, F12 + 2.5, -22)), CFrame.lookAt(Vector3.new(-31, F12 + 6, -26.5), Vector3.new(-37.5, F12 + 2.4, -20)), k) end },
-		{ 24, 30, function(k) return lerpCF(CFrame.lookAt(Vector3.new(-36.6, F12 + 4, -21.5), Vector3.new(-38.2, F12 + 2.3, -19.4)), CFrame.lookAt(Vector3.new(-37.2, F12 + 3.4, -20.6), Vector3.new(-38.2, F12 + 2.3, -19.4)), k) end },
+		{ 0, 9, function(k) return lerpCF(CFrame.lookAt(Vector3.new(-160, 95, -190), tower), CFrame.lookAt(Vector3.new(-90, 70, -130), tower), k) end },
+		-- the vans arrive
+		{ 9, 15, function(k) return lerpCF(CFrame.lookAt(Vector3.new(40, 5, -74), Vector3.new(0, 3, -50)), CFrame.lookAt(Vector3.new(30, 4, -70), Vector3.new(-5, 3, -50)), k) end },
+		-- SWAT walk into the lobby
+		{ 15, 20, function(k) return lerpCF(CFrame.lookAt(Vector3.new(12, 7, -20), Vector3.new(0, 4, -36)), CFrame.lookAt(Vector3.new(9, 6.5, -16), Vector3.new(0, 4, -28)), k) end },
+		-- up the facade to your window
+		{ 20, 26, function(k) return lerpCF(CFrame.lookAt(Vector3.new(-22, 70, -75), Vector3.new(-21, 150, -32)), CFrame.lookAt(Vector3.new(-21.5, F12 + 6, -44), Vector3.new(-21.5, F12 + 5, -30)), k) end },
+		{ 26, 34, function(k) return lerpCF(CFrame.lookAt(Vector3.new(-29, F12 + 7, -28.5), Vector3.new(-36, F12 + 2.5, -22)), CFrame.lookAt(Vector3.new(-31, F12 + 6, -26.5), Vector3.new(-37.5, F12 + 2.4, -20)), k) end },
+		{ 34, 40, function(k) return lerpCF(CFrame.lookAt(Vector3.new(-36.6, F12 + 4, -21.5), Vector3.new(-38.2, F12 + 2.3, -19.4)), CFrame.lookAt(Vector3.new(-37.2, F12 + 3.4, -20.6), Vector3.new(-38.2, F12 + 2.3, -19.4)), k) end },
 	}
-	task.delay(26.5, function()
+	task.delay(36.5, function()
 		if introPlaying then
 			title.Text = "CHAPTER 4: LAST STOP"
 			titleSub.Text = "they know where you live"
 		end
 	end)
 	timeline(Config.IntroTime, shots, lines, true, function(t)
-		if t >= 16.5 then
+		for _, v in vans do
+			local k = math.clamp((t - 9.2 - v.delay) / 4.5, 0, 1)
+			k = 1 - (1 - k) * (1 - k) -- ease out: brake to a stop
+			v.m:PivotTo(v.from:Lerp(v.home, k))
+		end
+		for _, sq in squad do
+			local k = math.clamp((t - 13.5) / 6, 0, 1)
+			actorPlace(sq.a, sq.from:Lerp(sq.to, k), sq.to + (sq.to - sq.from).Unit * 4)
+		end
+		if t >= 26.5 then
 			glow.Brightness = (math.floor(t * 4) % 2 == 0) and 2 or 0.6
 			if not buzzed then
 				buzzed = true
@@ -1171,6 +1213,9 @@ local function playIntro()
 			end
 		end
 	end)
+	for _, v in vans do
+		v.m:PivotTo(v.home)
+	end
 	phone:Destroy()
 	clearActors()
 	title.Text, titleSub.Text = "", ""
@@ -1613,19 +1658,86 @@ remotes:WaitForChild("Ending").OnClientEvent:Connect(function(secs, tapes, diffi
 	beginCut()
 	fade(0, 0.8)
 	task.wait(0.9)
-	fade(1, 1.5)
-	timeline(14, {
-		{ 0, 7, function(k) return lerpCF(CFrame.lookAt(Vector3.new(1000, -196, 80), Vector3.new(1000, -196.5, 140)), CFrame.lookAt(Vector3.new(1000, -196.5, 90), Vector3.new(1000, -196.5, 140)), k) end },
-		{ 7, 14, function(k) return lerpCF(CFrame.lookAt(Vector3.new(-160, 95, -190), Vector3.new(0, 60, 200)), CFrame.lookAt(Vector3.new(-200, 140, -260), Vector3.new(0, 30, 400)), k) end },
+	-- dawn by the sea (local lighting only)
+	_G.Ch4Cinematic = true
+	local L = Lighting
+	local saved = { ClockTime = L.ClockTime, Brightness = L.Brightness, Ambient = L.Ambient, OutdoorAmbient = L.OutdoorAmbient, FogEnd = L.FogEnd, FogStart = L.FogStart, FogColor = L.FogColor }
+	local atm = L:FindFirstChildOfClass("Atmosphere") or _G.Ch4Atm
+	local atmWasParent = atm and atm.Parent
+	local atmSaved = atm and { Density = atm.Density, Color = atm.Color, Decay = atm.Decay, Haze = atm.Haze }
+	local grade = L:FindFirstChild("Ch4Grade")
+	local coast = workspace:FindFirstChild("Coast")
+	local train = coast and coast:FindFirstChild("EscapeTrain")
+	local trainHome = {}
+	if train then
+		for _, p in train:GetDescendants() do
+			if p:IsA("BasePart") then
+				trainHome[p] = p.CFrame
+			end
+		end
+	end
+	local X = 3000
+	timeline(5, {
+		{ 0, 5, function(k) return lerpCF(CFrame.lookAt(Vector3.new(1000, -196, 90), Vector3.new(1001, -196.6, 96.5)), CFrame.lookAt(Vector3.new(1000.6, -196.4, 93.8), Vector3.new(1001, -196.6, 96.5)), k) end },
 	}, {
-		{ 0.5, "The train bursts out of the tunnel into grey morning light. The sea is right there." },
-		{ 4.5, "On the map: an island. 'B-02 HOLDING'. And your name." },
-		{ 9, "Wildcrest wants you on that island. ...Then that's where you'll end this." },
+		{ 0.3, "The map is still warm from the cab's heater. One island, circled in red." },
 	})
+	fade(0, 0.5)
+	task.wait(0.6)
+	L.ClockTime = 6.1
+	L.Brightness = 1.6
+	L.Ambient = Color3.fromRGB(60, 55, 60)
+	L.OutdoorAmbient = Color3.fromRGB(150, 120, 110)
+	L.FogStart, L.FogEnd = 0, 100000
+	if atm then
+		atm.Parent = L
+		atm.Density, atm.Color, atm.Decay, atm.Haze = 0.42, Color3.fromRGB(215, 170, 150), Color3.fromRGB(110, 90, 100), 2
+	end
+	if grade then
+		grade.TintColor, grade.Saturation, grade.Contrast, grade.Brightness = Color3.fromRGB(255, 232, 215), 0, 0.08, 0.02
+	end
+	fade(1, 1.5)
+	timeline(22, {
+		-- the train bursts out of the cliff
+		{ 0, 7, function(k) return lerpCF(CFrame.lookAt(Vector3.new(X + 26, 4, 70), Vector3.new(X, 6, 10)), CFrame.lookAt(Vector3.new(X + 24, 5, 80), Vector3.new(X, 5, 60)), k) end },
+		-- alongside, the sea behind it
+		{ 7, 14, function(k) return lerpCF(CFrame.lookAt(Vector3.new(X - 30, 14, 150), Vector3.new(X + 60, 4, 200)), CFrame.lookAt(Vector3.new(X - 26, 16, 210), Vector3.new(X + 200, 10, 260)), k) end },
+		-- the island in the mist
+		{ 14, 22, function(k) return lerpCF(CFrame.lookAt(Vector3.new(X + 30, 8, 240), Vector3.new(X + 700, 60, 265)), CFrame.lookAt(Vector3.new(X + 60, 10, 248), Vector3.new(X + 715, 100, 270)), k) end },
+	}, {
+		{ 0.5, "The last train bursts out of the dark... into grey morning light." },
+		{ 4.2, "The sea. You'd forgotten what open air smells like." },
+		{ 8, "Behind you, the city. Wildcrest's city." },
+		{ 11.5, "Ahead, on the horizon..." },
+		{ 14.5, "...an island. 'B-02 HOLDING'. And a red light that never stops blinking." },
+		{ 18.5, "Wildcrest wants you on that island. Then that's where this ends." },
+	}, false, function(t)
+		if train then
+			local dz = math.max(0, t) * 22
+			for p, home in trainHome do
+				p.CFrame = home + Vector3.new(0, 0, dz)
+			end
+		end
+	end)
 	fade(0, 1)
 	task.wait(1)
 	title.Text = "CHAPTER 4 - COMPLETE"
 	titleSub.Text = ("Time %d:%02d   |   %s   |   NEXT: CHAPTER 5 - THE ISLAND (the finale)   |   Returning to the lobby..."):format(secs // 60, secs % 60, string.upper(difficulty or "Normal"))
+	task.wait(6)
+	-- put everything back (Studio restarts the round instead of teleporting)
+	for k, v in saved do
+		L[k] = v
+	end
+	if atm and atmSaved then
+		for k, v in atmSaved do
+			atm[k] = v
+		end
+		atm.Parent = atmWasParent
+	end
+	for p, home in trainHome do
+		p.CFrame = home
+	end
+	_G.Ch4Cinematic = false
 end)
 
 -- ATMOSPHERE: alarm, blackout, flickering lights -----------------------------------------
@@ -1869,22 +1981,25 @@ do
 	end)
 	local baseAmbient, baseBright = Lighting.Ambient, Lighting.Brightness
 	local under = false
+	local savedAtm
 	RunService.Heartbeat:Connect(function()
+		if _G.Ch4Cinematic then
+			return
+		end
 		local u = camera.CFrame.Position.Y < -6
 		if u ~= under then
 			under = u
 			Lighting.Ambient = u and Color3.fromRGB(18, 18, 22) or baseAmbient
 			Lighting.Brightness = u and 0.4 or baseBright
 			-- outdoor fog gets thicker the deeper you go: switch it off underground
-			local atm = Lighting:FindFirstChildOfClass("Atmosphere")
-			if atm then
-				if u then
-					atm:SetAttribute("SurfaceDensity", atm:GetAttribute("SurfaceDensity") or atm.Density)
-					atm.Density = 0
-				elseif atm:GetAttribute("SurfaceDensity") then
-					atm.Density = atm:GetAttribute("SurfaceDensity")
-				end
+			savedAtm = savedAtm or Lighting:FindFirstChildOfClass("Atmosphere")
+			_G.Ch4Atm = savedAtm
+			if savedAtm then
+				savedAtm.Parent = (not u) and Lighting or nil
 			end
+			Lighting.FogColor = Color3.fromRGB(8, 9, 11)
+			Lighting.FogStart = u and 18 or 0
+			Lighting.FogEnd = u and 150 or 100000
 		end
 	end)
 end
@@ -1974,6 +2089,175 @@ do
 				end
 				L.part.CFrame = CFrame.new(1000 + L.side, -194, L.z)
 			end
+		end
+	end)
+end
+
+-- LOOK: colour grade + vignette per area ----------------------------------------------------
+do
+	local grade = Lighting:FindFirstChild("Ch4Grade") or Instance.new("ColorCorrectionEffect")
+	grade.Name = "Ch4Grade"
+	grade.Parent = Lighting
+	local zones = {
+		{ "ride", function(p) return p.Y < -150 end, { Color3.fromRGB(245, 222, 215), -0.2, 0.18, -0.02, 0.55 } },
+		{ "sewer", function(p) return p.Y < -45 end, { Color3.fromRGB(200, 232, 205), -0.4, 0.2, -0.04, 0.7 } },
+		{ "control", function(p) return p.Y < -6 and p.Z > 1028 and p.Z < 1101 end, { Color3.fromRGB(205, 215, 255), -0.3, 0.18, -0.02, 0.55 } },
+		{ "laststop", function(p) return p.Y < -6 and p.Z >= 1101 end, { Color3.fromRGB(255, 225, 200), -0.15, 0.15, 0, 0.45 } },
+		{ "construction", function(p) return p.Y < -6 and p.Z > 703 and p.Z < 882 end, { Color3.fromRGB(255, 222, 190), -0.25, 0.18, -0.02, 0.6 } },
+		{ "tunnel", function(p) return p.Y < -6 and p.Z > 244 end, { Color3.fromRGB(195, 205, 215), -0.5, 0.22, -0.04, 0.8 } },
+		{ "station", function(p) return p.Y < -3 end, { Color3.fromRGB(220, 240, 212), -0.32, 0.16, -0.02, 0.6 } },
+		{ "tower", function(p) return p.X > -41 and p.X < 41 and p.Z > -31 and p.Z < 31 and p.Y < 170 end, { Color3.fromRGB(255, 240, 226), -0.05, 0.06, 0, 0.25 } },
+		{ "city", function() return true end, { Color3.fromRGB(212, 222, 255), -0.12, 0.1, 0, 0.35 } },
+	}
+	local vg = Instance.new("ScreenGui")
+	vg.Name = "Vignette"
+	vg.IgnoreGuiInset = true
+	vg.ResetOnSpawn = false
+	vg.DisplayOrder = -1
+	vg.Parent = player.PlayerGui
+	local edges = {}
+	for _, e in { { UDim2.fromScale(1, 0.3), UDim2.fromScale(0, 0), 90 }, { UDim2.fromScale(1, 0.3), UDim2.fromScale(0, 0.7), -90 }, { UDim2.fromScale(0.25, 1), UDim2.fromScale(0, 0), 0 }, { UDim2.fromScale(0.25, 1), UDim2.fromScale(0.75, 0), 180 } } do
+		local f = Instance.new("Frame")
+		f.Size, f.Position = e[1], e[2]
+		f.BackgroundColor3 = Color3.new(0, 0, 0)
+		f.BackgroundTransparency = 1
+		f.BorderSizePixel = 0
+		f.Parent = vg
+		local g = Instance.new("UIGradient")
+		g.Rotation = e[3]
+		g.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1) })
+		g.Parent = f
+		table.insert(edges, f)
+	end
+	local current
+	local acc = 0
+	RunService.Heartbeat:Connect(function(dt)
+		acc += dt
+		if acc < 0.25 then
+			return
+		end
+		acc = 0
+		if _G.Ch4Cinematic then
+			current = nil
+			return
+		end
+		local pos = camera.CFrame.Position
+		for _, z in zones do
+			if z[2](pos) then
+				if current ~= z[1] then
+					current = z[1]
+					local v = z[3]
+					TweenService:Create(grade, TweenInfo.new(1.5), { TintColor = v[1], Saturation = v[2], Contrast = v[3], Brightness = v[4] }):Play()
+					for _, f in edges do
+						TweenService:Create(f, TweenInfo.new(1.5), { BackgroundTransparency = 1 - v[5] }):Play()
+					end
+				end
+				break
+			end
+		end
+	end)
+end
+
+-- THE CRAWLER: procedural bone animation (it has no animation clips of its own) -------------
+do
+	local rigs = {} -- [model] = { bones = {name = {bone, base}}, last = pos, phase = 0, twitchAt = 0, twitch = CFrame }
+	local function setup(m)
+		if rigs[m] or not m:GetAttribute("BoneRig") then
+			return
+		end
+		local bones = {}
+		for _, b in m:GetDescendants() do
+			if b:IsA("Bone") then
+				bones[b.Name] = b
+			end
+		end
+		rigs[m] = { bones = bones, last = nil, phase = math.random() * 6, twitchAt = 0, tw = CFrame.new() }
+	end
+	local function scan()
+		for _, folder in { workspace:FindFirstChild("Monsters"), workspace } do
+			if folder then
+				for _, m in folder:GetChildren() do
+					if m:IsA("Model") and m:GetAttribute("BoneRig") then
+						setup(m)
+					end
+				end
+			end
+		end
+	end
+	local acc = 0
+	RunService.RenderStepped:Connect(function(dt)
+		acc += dt
+		if acc > 1 then
+			acc = 0
+			scan()
+		end
+		local now = os.clock()
+		for m, r in rigs do
+			if not m.Parent then
+				rigs[m] = nil
+				continue
+			end
+			local root = m.PrimaryPart
+			if not root then
+				continue
+			end
+			-- positions arrive from the server in steps, so measure speed over a short window
+			local pos = root.Position
+			r.sampleT = r.sampleT or now
+			r.samplePos = r.samplePos or pos
+			if now - r.sampleT >= 0.25 then
+				local measured = ((pos - r.samplePos) * Vector3.new(1, 0, 1)).Magnitude / (now - r.sampleT)
+				r.speedTarget = measured
+				r.sampleT, r.samplePos = now, pos
+			end
+			r.speed = (r.speed or 0) + ((r.speedTarget or 0) - (r.speed or 0)) * math.min(1, dt * 6)
+			local speed = r.speed
+			local stunned = m:GetAttribute("Stunned")
+			local k = math.clamp(speed / 14, 0, 1.4)
+			r.phase += dt * (2 + speed * 0.55)
+			local p = r.phase
+			local b = r.bones
+			local function rot(name, x, y, z)
+				local bone = b[name]
+				if bone then
+					bone.Transform = CFrame.Angles(x, y, z)
+				end
+			end
+			if stunned then
+				-- shaking, curled up
+				local sh = (math.random() - 0.5) * 0.25
+				rot("Spine", 0.5 + sh, 0, sh)
+				rot("Head", 0.4, sh * 2, 0)
+				rot("LeftArm", 0.9, 0, 0.4)
+				rot("RightArm", 0.9, 0, -0.4)
+				continue
+			end
+			-- crawl cycle: opposite limbs together
+			local swing = math.sin(p) * 0.65 * k
+			rot("LeftUpLeg", swing, 0, 0)
+			rot("RightUpLeg", -swing, 0, 0)
+			rot("LeftLeg", math.max(0, -math.sin(p)) * 0.8 * k, 0, 0)
+			rot("RightLeg", math.max(0, math.sin(p)) * 0.8 * k, 0, 0)
+			rot("LeftArm", -swing * 1.2 - 0.2 * k, 0, 0)
+			rot("RightArm", swing * 1.2 - 0.2 * k, 0, 0)
+			rot("LeftForeArm", math.max(0, math.sin(p)) * 0.7 * k, 0, 0)
+			rot("RightForeArm", math.max(0, -math.sin(p)) * 0.7 * k, 0, 0)
+			-- breathing / body bob
+			local breath = math.sin(now * 1.7) * 0.06
+			rot("Spine02", breath + math.sin(p * 2) * 0.08 * k, 0, math.sin(p) * 0.06 * k)
+			rot("Spine01", breath, math.sin(p) * 0.08 * k, 0)
+			-- the head: slow searching sway + sudden twitches
+			if now > r.twitchAt then
+				r.twitchAt = now + (k > 0.5 and 0.6 or 1.4) + math.random() * 1.8
+				r.tw = CFrame.Angles((math.random() - 0.5) * 0.9, (math.random() - 0.5) * 1.3, (math.random() - 0.5) * 0.9)
+				r.twEnd = now + 0.12 + math.random() * 0.15
+			end
+			local head = b["Head"]
+			if head then
+				local sway = CFrame.Angles(math.sin(now * 0.9) * 0.15, math.sin(now * 0.6) * 0.35, 0)
+				head.Transform = sway * ((r.twEnd and now < r.twEnd) and r.tw or CFrame.new())
+			end
+			rot("neck", math.sin(now * 0.8) * 0.1, 0, math.sin(now * 1.3) * 0.08)
 		end
 	end)
 end

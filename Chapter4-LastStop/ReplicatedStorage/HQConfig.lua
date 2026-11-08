@@ -2,9 +2,9 @@
 local Config = {}
 Config.EvidenceNeeded = 8
 Config.EvidenceSpawned = 14        -- random loose files around the 3 floors (plus cabinets + the safe)
-Config.IntroTime = 30
+Config.IntroTime = 40
 Config.DifficultyChooseTime = 25
-Config.ReturnToLobbyDelay = 32
+Config.ReturnToLobbyDelay = 40
 Config.WalkSpeed, Config.SprintSpeed = 14, 23
 Config.StaminaMax, Config.StaminaDrain, Config.StaminaRegen = 100, 15, 18
 Config.StunRange = 20
