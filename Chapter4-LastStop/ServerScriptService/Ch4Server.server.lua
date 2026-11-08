@@ -1846,7 +1846,11 @@ local function spawnMap()
 		if roster[player] and m.Parent and round.uncoupled then
 			m:Destroy()
 			ShowNote:FireClient(player, "WILDCREST - PROJECT B - ISLAND SITE", "A hand-drawn map of an island far off the coast.\n\nMarked in red: 'B-02 HOLDING'. 'B-03'. 'B-04'...\n\nAt the bottom, in Marsh's handwriting:\n'Ship the ex-employee here when caught. Alive.'")
-			task.delay(4, win)
+			task.delay(4, function()
+				if round.win then
+					round.win()
+				end
+			end)
 		end
 	end)
 end
@@ -2051,6 +2055,7 @@ local function win()
 		end
 	end)
 end
+round.win = win
 task.spawn(function()
 	while true do
 		task.wait(0.25)

@@ -17,6 +17,7 @@ local VANS = {
 	{ model = lobby:WaitForChild("Van"), chapter = 1, place = "Game", requires = nil, name = "Chapter 1" },
 	{ model = lobby:WaitForChild("Van2"), chapter = 2, place = "Chapter2", requires = 1, name = "Chapter 2" },
 	{ model = lobby:WaitForChild("Van3"), chapter = 3, place = "Chapter3", requires = 2, name = "Chapter 3" },
+	{ model = lobby:WaitForChild("Van4"), chapter = 4, place = "Chapter4", requires = 3, name = "Chapter 4" },
 }
 
 local remotes = ReplicatedStorage:FindFirstChild("LobbyRemotes") or Instance.new("Folder")
@@ -56,6 +57,7 @@ end
 local function refreshUnlock(player)
 	player:SetAttribute("Ch2Unlocked", hasBeaten(player, 1))
 	player:SetAttribute("Ch3Unlocked", hasBeaten(player, 2))
+	player:SetAttribute("Ch4Unlocked", hasBeaten(player, 3))
 end
 local function load(player)
 	local prof = { Completed = {}, loaded = store == nil }
@@ -86,7 +88,7 @@ local function load(player)
 			save(player)
 			task.delay(4, function()
 				if player.Parent then
-					Notify:FireClient(player, data.Completed >= 3 and "Chapter 3 complete! Chapter 4 is coming soon..." or ("Chapter %d complete! Chapter %d is unlocked."):format(data.Completed, data.Completed + 1))
+					Notify:FireClient(player, data.Completed >= 4 and "Chapter 4 complete! Chapter 5 - THE ISLAND, the finale - is coming soon..." or ("Chapter %d complete! Chapter %d is unlocked."):format(data.Completed, data.Completed + 1))
 				end
 			end)
 		end

@@ -90,7 +90,7 @@ end
 CollectionService:GetInstanceAddedSignal("Flicker"):Connect(flicker)
 
 -- Chapter 2 / 3 vans: hide the lock sign once you've beaten the chapter before
-for _, pair in { { "Van2", "Ch2Unlocked" }, { "Van3", "Ch3Unlocked" } } do task.spawn(function()
+for _, pair in { { "Van2", "Ch2Unlocked" }, { "Van3", "Ch3Unlocked" }, { "Van4", "Ch4Unlocked" } } do task.spawn(function()
 	local van2 = workspace:WaitForChild("Lobby"):WaitForChild(pair[1], 10)
 	local sign = van2 and van2:FindFirstChild("LockSign")
 	if not sign then
