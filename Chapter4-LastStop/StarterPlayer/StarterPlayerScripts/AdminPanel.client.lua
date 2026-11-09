@@ -120,6 +120,7 @@ list:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(fit)
 local function setOpen(open)
 	fit()
 	panel.Visible = open
+	player:SetAttribute("AdminPanelOpen", open)
 	openBtn.Modal = open
 	if open then UserInputService.MouseBehavior = Enum.MouseBehavior.Default end
 end

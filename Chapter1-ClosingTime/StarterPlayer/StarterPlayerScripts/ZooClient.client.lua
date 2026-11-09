@@ -982,6 +982,9 @@ RunService.RenderStepped:Connect(function(dt)
 	spot.Brightness = (ftier and ftier.Brightness or 3.5) * math.clamp(battery / 30, 0.35, 1)
 	spot.Range = ftier and ftier.Range or 60
 	spot.Angle = ftier and ftier.Angle or 50
+	local beam = ({ ice = Color3.fromRGB(170, 220, 255), uv = Color3.fromRGB(190, 120, 255), red = Color3.fromRGB(255, 110, 100) })[player:GetAttribute("Up_FlashSkin") or ""]
+	spot.Color = beam or Color3.fromRGB(255, 245, 225)
+	glow.Color = spot.Color
 	batteryFill.Size = UDim2.fromScale(battery / Config.BatteryMax, 1)
 
 	local moving = hum.MoveDirection.Magnitude > 0.1 and not hidden

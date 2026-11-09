@@ -36,4 +36,27 @@ Config.Sounds = {
 	Alarm = "rbxassetid://9119661709",
 	Growl = "rbxassetid://9114628818",
 }
+-- TOUGHER MONSTERS (user request 2026-11-09): faster, sharper eyes and ears
+for _, m in Config.Monsters do
+	m.PatrolSpeed *= 1.15
+	m.ChaseSpeed *= 1.2
+	m.Sight *= 1.3
+	m.SightFlashlight *= 1.3
+	m.Hearing *= 1.3
+	m.Sense *= 1.25
+	m.FOV = math.min(180, m.FOV + 15)
+end
+-- MORE LIVES (user request 2026-11-09)
+for name, lives in { Easy = 10, Normal = 7, Hard = 5, Nightmare = 3 } do
+	local d = Config.Difficulties[name]
+	if d then
+		d.Lives = lives
+		d.Blurb = d.Blurb:gsub("^%d+ li[fv]es?%.", lives .. (lives == 1 and " life." or " lives."))
+	end
+end
+-- CASH (banked in the lobby)
+Config.CashBundles = 20
+Config.CashPerBundle = 15
+Config.FinishBonus = { Easy = 100, Normal = 200, Hard = 350, Nightmare = 500 }
+Config.MaxEarnedPerRun = 2000
 return Config

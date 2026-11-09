@@ -193,7 +193,7 @@ local function refreshHUD()
 	objective.Text = RS:GetAttribute("Objective") or ""
 	checklist.Text = (RS:GetAttribute("Phase") or 0) >= 1 and checklistText() or ""
 	local lives = player:GetAttribute("Lives")
-	livesLabel.Text = lives and (player:GetAttribute("AdminGod") and "GOD MODE" or string.rep("<3 ", math.max(lives, 0))) or ""
+	livesLabel.Text = lives and (player:GetAttribute("AdminGod") and "GOD MODE" or (player:GetAttribute("InfiniteLives") and "INFINITE LIVES" or string.rep("<3 ", math.max(lives, 0)))) or ""
 	local d = RS:GetAttribute("Difficulty") or ""
 	diffLabel.Text = d:upper()
 	local dc = Config.Difficulties[d]
@@ -208,38 +208,60 @@ end
 for _, a in { "Valves", "StationKey", "Objective", "Phase", "Evidence", "EvidenceNeeded", "Keycard1", "Keycard2", "CellsFreed", "SignalCut", "Tapes", "Difficulty", "Broadcast", "BroadcastStalled" } do
 	RS:GetAttributeChangedSignal(a):Connect(refreshHUD)
 end
-for _, a in { "Lives", "StunCharges", "HasStunner", "AdminGod" } do
+for _, a in { "Lives", "StunCharges", "HasStunner", "AdminGod", "InfiniteLives" } do
 	player:GetAttributeChangedSignal(a):Connect(refreshHUD)
 end
 refreshHUD()
 
 -- MOVEMENT / FLASHLIGHT -----------------------------------------------------------------
+local minigameOpen = false
+local cutscenePlaying = false
 local stamina = Config.StaminaMax
 local sprintHeld = false
 local flashlightOn = false
 local flash
-local function ensureFlash()
-	local char = player.Character
-	local head = char and char:FindFirstChild("Head")
-	if not head then
-		return
-	end
-	flash = head:FindFirstChild("Flashlight")
-	if not flash then
-		flash = Instance.new("SpotLight")
-		flash.Name = "Flashlight"
-		flash.Angle = 55
-		flash.Range = 55
-		flash.Brightness = 2.4
-		flash.Color = Color3.fromRGB(255, 244, 220)
-		flash.Shadows = true
-		flash.Face = Enum.NormalId.Front
-		flash.Parent = head
-	end
-	flash.Enabled = flashlightOn
+-- the flashlight rides on the camera (a light inside the head gets blocked by big hair/hats)
+local flashRig = Instance.new("Part")
+flashRig.Name = "FlashlightRig"
+flashRig.Anchored, flashRig.CanCollide, flashRig.CanQuery, flashRig.CanTouch = true, false, false, false
+flashRig.Transparency = 1
+flashRig.Size = Vector3.new(0.2, 0.2, 0.2)
+flashRig.Parent = workspace.CurrentCamera
+flash = Instance.new("SpotLight")
+flash.Name = "Flashlight"
+flash.Angle = 50
+flash.Range = 60
+flash.Brightness = 3
+flash.Color = Color3.fromRGB(255, 244, 220)
+flash.Shadows = true
+flash.Face = Enum.NormalId.Front
+flash.Parent = flashRig
+local glowNear = Instance.new("PointLight")
+glowNear.Range = 9
+glowNear.Brightness = 0.4
+glowNear.Color = Color3.fromRGB(255, 240, 215)
+glowNear.Parent = flashRig
+RunService:BindToRenderStep("FlashlightFollow", Enum.RenderPriority.Camera.Value + 5, function()
+	flashRig.CFrame = camera.CFrame * CFrame.new(0.6, -0.5, -0.4)
+end)
+local FLASH_SKINS = { [""] = Color3.fromRGB(255, 244, 220), ice = Color3.fromRGB(170, 220, 255), uv = Color3.fromRGB(190, 120, 255), red = Color3.fromRGB(255, 110, 100) }
+local function applyFlashUpgrades()
+	local tier = player:GetAttribute("Up_Flash") or 0
+	flash.Brightness = 3 + tier * 0.9
+	flash.Range = 60 + tier * 15
+	flash.Angle = 50 + tier * 6
+	flash.Color = FLASH_SKINS[player:GetAttribute("Up_FlashSkin") or ""] or FLASH_SKINS[""]
+	glowNear.Color = flash.Color
 end
-local minigameOpen = false
-local cutscenePlaying = false
+for _, a in { "Up_Flash", "Up_FlashSkin" } do
+	player:GetAttributeChangedSignal(a):Connect(applyFlashUpgrades)
+end
+applyFlashUpgrades()
+local function ensureFlash()
+	local on = flashlightOn and not cutscenePlaying
+	flash.Enabled = on
+	glowNear.Enabled = on
+end
 local lastSent = {}
 local sendAt = 0
 RunService.Heartbeat:Connect(function(dt)
@@ -250,10 +272,11 @@ RunService.Heartbeat:Connect(function(dt)
 	end
 	local moving = hum.MoveDirection.Magnitude > 0.1 and not player:GetAttribute("Hidden")
 	local sprinting = sprintHeld and moving and stamina > 1 and not minigameOpen
+	local drainMul = player:GetAttribute("Up_Sprinter") and 0.7 or 1 -- Sprinter skill
 	if sprinting then
-		stamina = math.max(0, stamina - Config.StaminaDrain * dt)
+		stamina = math.max(0, stamina - Config.StaminaDrain * drainMul * dt)
 	else
-		stamina = math.min(Config.StaminaMax, stamina + Config.StaminaRegen * dt * (moving and 0.6 or 1))
+		stamina = math.min(Config.StaminaMax, stamina + Config.StaminaRegen * dt * (moving and 0.6 or 1) / drainMul)
 	end
 	local speed = sprinting and Config.SprintSpeed or Config.WalkSpeed
 	if minigameOpen or cutscenePlaying then
@@ -1989,17 +2012,17 @@ do
 		local u = camera.CFrame.Position.Y < -6
 		if u ~= under then
 			under = u
-			Lighting.Ambient = u and Color3.fromRGB(18, 18, 22) or baseAmbient
-			Lighting.Brightness = u and 0.4 or baseBright
+			Lighting.Ambient = u and Color3.fromRGB(48, 48, 56) or baseAmbient
+			Lighting.Brightness = u and 1 or baseBright
 			-- outdoor fog gets thicker the deeper you go: switch it off underground
 			savedAtm = savedAtm or Lighting:FindFirstChildOfClass("Atmosphere")
 			_G.Ch4Atm = savedAtm
 			if savedAtm then
 				savedAtm.Parent = (not u) and Lighting or nil
 			end
-			Lighting.FogColor = Color3.fromRGB(8, 9, 11)
-			Lighting.FogStart = u and 18 or 0
-			Lighting.FogEnd = u and 150 or 100000
+			Lighting.FogColor = Color3.fromRGB(16, 17, 20)
+			Lighting.FogStart = u and 40 or 0
+			Lighting.FogEnd = u and 260 or 100000
 		end
 	end)
 end
@@ -2099,15 +2122,15 @@ do
 	grade.Name = "Ch4Grade"
 	grade.Parent = Lighting
 	local zones = {
-		{ "ride", function(p) return p.Y < -150 end, { Color3.fromRGB(245, 222, 215), -0.2, 0.18, -0.02, 0.55 } },
-		{ "sewer", function(p) return p.Y < -45 end, { Color3.fromRGB(200, 232, 205), -0.4, 0.2, -0.04, 0.7 } },
-		{ "control", function(p) return p.Y < -6 and p.Z > 1028 and p.Z < 1101 end, { Color3.fromRGB(205, 215, 255), -0.3, 0.18, -0.02, 0.55 } },
-		{ "laststop", function(p) return p.Y < -6 and p.Z >= 1101 end, { Color3.fromRGB(255, 225, 200), -0.15, 0.15, 0, 0.45 } },
-		{ "construction", function(p) return p.Y < -6 and p.Z > 703 and p.Z < 882 end, { Color3.fromRGB(255, 222, 190), -0.25, 0.18, -0.02, 0.6 } },
-		{ "tunnel", function(p) return p.Y < -6 and p.Z > 244 end, { Color3.fromRGB(195, 205, 215), -0.5, 0.22, -0.04, 0.8 } },
-		{ "station", function(p) return p.Y < -3 end, { Color3.fromRGB(220, 240, 212), -0.32, 0.16, -0.02, 0.6 } },
-		{ "tower", function(p) return p.X > -41 and p.X < 41 and p.Z > -31 and p.Z < 31 and p.Y < 170 end, { Color3.fromRGB(255, 240, 226), -0.05, 0.06, 0, 0.25 } },
-		{ "city", function() return true end, { Color3.fromRGB(212, 222, 255), -0.12, 0.1, 0, 0.35 } },
+		{ "ride", function(p) return p.Y < -150 end, { Color3.fromRGB(250, 235, 228), -0.12, 0.08, 0.05, 0.3 } },
+		{ "sewer", function(p) return p.Y < -45 end, { Color3.fromRGB(220, 240, 222), -0.25, 0.08, 0.06, 0.35 } },
+		{ "control", function(p) return p.Y < -6 and p.Z > 1028 and p.Z < 1101 end, { Color3.fromRGB(222, 230, 255), -0.18, 0.08, 0.06, 0.3 } },
+		{ "laststop", function(p) return p.Y < -6 and p.Z >= 1101 end, { Color3.fromRGB(255, 236, 220), -0.1, 0.07, 0.06, 0.25 } },
+		{ "construction", function(p) return p.Y < -6 and p.Z > 703 and p.Z < 882 end, { Color3.fromRGB(255, 235, 210), -0.15, 0.08, 0.06, 0.3 } },
+		{ "tunnel", function(p) return p.Y < -6 and p.Z > 244 end, { Color3.fromRGB(215, 222, 230), -0.3, 0.1, 0.05, 0.4 } },
+		{ "station", function(p) return p.Y < -3 end, { Color3.fromRGB(232, 245, 226), -0.2, 0.07, 0.06, 0.3 } },
+		{ "tower", function(p) return p.X > -41 and p.X < 41 and p.Z > -31 and p.Z < 31 and p.Y < 170 end, { Color3.fromRGB(255, 244, 232), 0, 0.03, 0.04, 0.12 } },
+		{ "city", function() return true end, { Color3.fromRGB(225, 232, 255), -0.05, 0.05, 0.04, 0.18 } },
 	}
 	local vg = Instance.new("ScreenGui")
 	vg.Name = "Vignette"
@@ -2260,4 +2283,71 @@ do
 			rot("neck", math.sin(now * 0.8) * 0.1, 0, math.sin(now * 1.3) * 0.08)
 		end
 	end)
+end
+
+-- FIRST PERSON: free the mouse whenever something needs clicking (minigames, notes, menus) or M is toggled
+do
+	local freeMouse = false
+	UserInputService.InputBegan:Connect(function(input, processed)
+		if not processed and input.KeyCode == Enum.KeyCode.M then
+			freeMouse = not freeMouse
+		end
+	end)
+	RunService:BindToRenderStep("FreeMouse", Enum.RenderPriority.Camera.Value + 10, function()
+		local needMouse = freeMouse or minigameOpen or paper.Visible or picker.Visible or player:GetAttribute("AdminPanelOpen") == true
+		if needMouse then
+			UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+			UserInputService.MouseIconEnabled = true
+		end
+	end)
+end
+
+-- CASH + SIXTH SENSE -------------------------------------------------------------------------
+do
+	local cashLabel = label(gui, { Size = UDim2.fromOffset(240, 26), Position = UDim2.new(1, -264, 0, 100), TextXAlignment = Enum.TextXAlignment.Right, TextSize = 20, TextColor3 = Color3.fromRGB(130, 255, 150), Text = "" })
+	local function refreshCash()
+		local c = player:GetAttribute("RunCash") or 0
+		cashLabel.Text = c > 0 and ("$%d this run"):format(c) or ""
+	end
+	player:GetAttributeChangedSignal("RunCash"):Connect(refreshCash)
+	refreshCash()
+	local senseLabel = label(gui, { Size = UDim2.fromOffset(300, 22), Position = UDim2.new(0, 24, 1, -150), TextXAlignment = Enum.TextXAlignment.Left, TextSize = 16, TextColor3 = Color3.fromRGB(220, 160, 255), Text = "" })
+	local readyAt = 0
+	local function refreshSense()
+		if not player:GetAttribute("Up_Sixth") then
+			senseLabel.Text = ""
+		elseif os.clock() < readyAt then
+			senseLabel.Text = ("SIXTH SENSE [R]: %ds"):format(math.ceil(readyAt - os.clock()))
+		else
+			senseLabel.Text = "SIXTH SENSE [R]: ready"
+		end
+	end
+	UserInputService.InputBegan:Connect(function(input, processed)
+		if processed or input.KeyCode ~= Enum.KeyCode.R or not player:GetAttribute("Up_Sixth") or os.clock() < readyAt or cutscenePlaying then
+			return
+		end
+		readyAt = os.clock() + 30
+		sound(Config.Sounds.Heartbeat, 0.8, 0.6)
+		local folder = workspace:FindFirstChild("Monsters")
+		local hl = {}
+		if folder then
+			for _, m in folder:GetChildren() do
+				local h = Instance.new("Highlight")
+				h.Adornee = m
+				h.FillColor = Color3.fromRGB(200, 60, 255)
+				h.FillTransparency = 0.6
+				h.OutlineColor = Color3.fromRGB(240, 200, 255)
+				h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+				h.Parent = camera
+				table.insert(hl, h)
+			end
+		end
+		notice("Sixth Sense: you can feel where they are...", Color3.fromRGB(220, 160, 255), 3)
+		task.delay(4, function()
+			for _, h in hl do
+				h:Destroy()
+			end
+		end)
+	end)
+	RunService.Heartbeat:Connect(refreshSense)
 end

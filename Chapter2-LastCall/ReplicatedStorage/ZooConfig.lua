@@ -139,4 +139,20 @@ Config.EarlyCrawlers = { Easy = 0, Normal = 0, Hard = 0, Nightmare = 0 } -- prow
 Config.NoCrawlers = true -- Chapter 2 is just you and B-00
 Config.EnrageCrawlers = { Easy = 0, Normal = 0, Hard = 0, Nightmare = 0 } -- join the fight at half HP -- dodge its charge into the wreck/trees
 
+-- TOUGHER MONSTERS + MORE LIVES (user request 2026-11-09)
+for _, m in Config.Monsters do
+	if type(m.PatrolSpeed) == "number" then m.PatrolSpeed *= 1.15 end
+	if type(m.ChaseSpeed) == "number" then m.ChaseSpeed *= 1.2 end
+	if type(m.Sight) == "number" then m.Sight *= 1.3 end
+	if type(m.SightFlashlight) == "number" then m.SightFlashlight *= 1.3 end
+	if type(m.Hearing) == "number" then m.Hearing *= 1.3 end
+	if type(m.Sense) == "number" then m.Sense *= 1.25 end
+	if type(m.FOV) == "number" and m.FOV < 360 then m.FOV = math.min(180, m.FOV + 15) end
+end
+for name, lives in { Easy = 10, Normal = 7, Hard = 5, Nightmare = 3 } do
+	local d = Config.Difficulties[name]
+	if d then
+		d.Lives = lives
+	end
+end
 return Config

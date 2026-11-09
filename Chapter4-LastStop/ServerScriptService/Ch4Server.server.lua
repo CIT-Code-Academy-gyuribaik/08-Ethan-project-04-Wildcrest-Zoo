@@ -408,10 +408,11 @@ local function perceive(m, player, st)
 			return "see"
 		end
 	end
-	if st.sprinting and dist < cfg.Hearing then
+	local ears = player:GetAttribute("Up_Silent") and 0.65 or 1
+	if st.sprinting and dist < cfg.Hearing * ears then
 		return "hear"
 	end
-	if st.moving and dist < cfg.Hearing * 0.35 then
+	if st.moving and dist < cfg.Hearing * 0.35 * ears then
 		return "hear"
 	end
 	return nil
@@ -800,15 +801,16 @@ local function sendToLobby(list, completed)
 	if #list == 0 then
 		return
 	end
-	local options = Instance.new("TeleportOptions")
-	if completed then
-		options:SetTeleportData({ Completed = completed })
-	end
-	local ok, err = pcall(function()
-		TeleportService:TeleportAsync(PlaceIds.Lobby, list, options)
-	end)
-	if not ok then
-		warn("Teleport failed: " .. tostring(err))
+	-- one teleport per player so each carries their own earnings back to the lobby bank
+	for _, p in list do
+		local options = Instance.new("TeleportOptions")
+		options:SetTeleportData({ Completed = completed, Earned = math.clamp(p:GetAttribute("RunCash") or 0, 0, Config.MaxEarnedPerRun or 2000), From = 4 })
+		local ok, err = pcall(function()
+			TeleportService:TeleportAsync(PlaceIds.Lobby, { p }, options)
+		end)
+		if not ok then
+			warn("Teleport failed: " .. tostring(err))
+		end
 	end
 end
 function catchPlayer(m, player)
@@ -2071,6 +2073,30 @@ task.spawn(function()
 	end
 end)
 
+-- CASH: bundles to find on the way (banked in the lobby when you get back) ----------------
+local function addCash(player, amount, why)
+	player:SetAttribute("RunCash", (player:GetAttribute("RunCash") or 0) + amount)
+	Notify:FireClient(player, ("+$%d %s"):format(amount, why or ""), Color3.fromRGB(120, 255, 140))
+end
+local function spawnCash()
+	local pts = marks("PatrolPoint")
+	for k = #pts, 2, -1 do
+		local j = math.random(k)
+		pts[k], pts[j] = pts[j], pts[k]
+	end
+	for k = 1, math.min(Config.CashBundles or 24, #pts) do
+		local pos = pts[k].Position + Vector3.new(math.random(-3, 3), 0.4, math.random(-3, 3))
+		local c = itemPart("CashBundle", Vector3.new(1.2, 0.35, 0.7), Color3.fromRGB(90, 200, 100), CFrame.new(pos) * CFrame.Angles(0, math.random() * 6, 0))
+		c.Material = Enum.Material.SmoothPlastic
+		onTrigger(prompt(c, "Take", "Cash", 0, 8), function(player)
+			if roster[player] and c.Parent then
+				c:Destroy()
+				addCash(player, Config.CashPerBundle or 15, "cash")
+			end
+		end)
+	end
+end
+
 -- ESCAPE -------------------------------------------------------------------------------
 local function win()
 	if round.ending then
@@ -2087,6 +2113,10 @@ local function win()
 		Ending:FireClient(p, secs, round.tapes or 0, round.difficulty)
 	end
 	setObjective("You escaped on the last train.")
+	local bonus = (Config.FinishBonus or {})[round.difficulty or "Normal"] or 200
+	for _, p in inGamePlayers() do
+		addCash(p, bonus, "for escaping (" .. (round.difficulty or "Normal") .. ")")
+	end
 	local id = round.id
 	task.delay(Config.ReturnToLobbyDelay, function()
 		if round.id ~= id then
@@ -2282,15 +2312,16 @@ function round.applyDifficulty(name, who)
 	local d = D()
 	for _, p in inGamePlayers() do
 		local st = roster[p]
-		st.lives = savedLives[p.UserId] or d.Lives
+		st.lives = savedLives[p.UserId] or (d.Lives + (p:GetAttribute("Up_ExtraLife") or 0))
 		p:SetAttribute("Lives", st.lives)
-		p:SetAttribute("StunCharges", d.StunCharges)
+		p:SetAttribute("StunCharges", d.StunCharges + 2 * (p:GetAttribute("Up_StunPlus") or 0))
 		p:SetAttribute("HasStunner", true)
 	end
 	setPhase(1)
 	round.respawnCF = CFrame.new(start.Position)
 	round.startTime = os.clock()
 	spawnStationKey()
+	spawnCash()
 	startRaid()
 	notifyAll(("Difficulty: %s%s"):format(round.difficulty:upper(), who and (" (picked by " .. who .. ")") or ""), d.Color)
 end
@@ -2328,7 +2359,58 @@ local function joinRound(player)
 		beginRound()
 	end
 	local d = D()
-	roster[player] = { lives = savedLives[player.UserId] or d.Lives, protectedUntil = os.clock() + 4 }
+	-- what you bought in the lobby rides along in the teleport data
+	local up = {}
+	pcall(function()
+		local jd = player:GetJoinData()
+		local td = jd and jd.TeleportData
+		if type(td) == "table" and type(td.UpgradesByUser) == "table" and type(td.UpgradesByUser[tostring(player.UserId)]) == "table" then
+			up = td.UpgradesByUser[tostring(player.UserId)]
+		elseif type(td) == "table" and type(td.Upgrades) == "table" then
+			up = td.Upgrades
+		end
+	end)
+	if RunService:IsStudio() and workspace:GetAttribute("TestAllUpgrades") then
+		up = { flash = 2, flashSkin = "ice", sprinter = true, silent = true, sixth = true, extraLife = 1, stunPlus = 1, skin = "hoodie" }
+	end
+	local function num(v, max) return math.clamp(tonumber(v) or 0, 0, max) end
+	local function str(v) return type(v) == "string" and v:sub(1, 20) or "" end
+	player:SetAttribute("Up_Flash", num(up.flash, 2))
+	player:SetAttribute("Up_FlashSkin", str(up.flashSkin))
+	player:SetAttribute("Up_Sprinter", up.sprinter == true)
+	player:SetAttribute("Up_Silent", up.silent == true)
+	player:SetAttribute("Up_Sixth", up.sixth == true)
+	player:SetAttribute("Up_ExtraLife", num(up.extraLife, 6))
+	player:SetAttribute("Up_StunPlus", num(up.stunPlus, 2))
+	player:SetAttribute("Up_Skin", str(up.skin))
+	player:SetAttribute("RunCash", player:GetAttribute("RunCash") or 0)
+	-- outfit skin bought in the lobby (borrowed from the game's own characters)
+	local skinFrom = ({ agent = "Guard", director = "Marsh", guest = "B01" })[player:GetAttribute("Up_Skin") or ""]
+	local srcModel = skinFrom and ServerStorage.Monsters:FindFirstChild(skinFrom)
+	local ch = player.Character
+	if srcModel and ch then
+		for _, cls in { "Shirt", "Pants" } do
+			local from = srcModel:FindFirstChildOfClass(cls)
+			if from then
+				local old = ch:FindFirstChildOfClass(cls)
+				if old then
+					old:Destroy()
+				end
+				from:Clone().Parent = ch
+			end
+		end
+	end
+	roster[player] = { lives = savedLives[player.UserId] or (d.Lives + (player:GetAttribute("Up_ExtraLife") or 0)), protectedUntil = os.clock() + 4 }
+	-- the Infinite Lives game pass (bought in chapter 1) works in every chapter
+	task.spawn(function()
+		local ok, owns = pcall(function()
+			return game:GetService("MarketplaceService"):UserOwnsGamePassAsync(player.UserId, 2076033249)
+		end)
+		if ok and owns and roster[player] then
+			roster[player].infinite = true
+			player:SetAttribute("InfiniteLives", true)
+		end
+	end)
 	player:SetAttribute("InGame", true)
 	player:SetAttribute("Lives", roster[player].lives)
 	if round.difficulty then
@@ -2480,6 +2562,8 @@ AdminRemote.OnServerEvent:Connect(function(player, cmd, value)
 			win()
 		end
 		say("Skipped ahead (phase " .. round.phase .. ").")
+	elseif cmd == "cash" then
+		addCash(player, 500, "(admin)")
 	elseif cmd == "tp" and typeof(value) == "Vector3" then
 		local _, r = charParts(player)
 		if r then

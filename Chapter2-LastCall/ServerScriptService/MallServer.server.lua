@@ -1446,6 +1446,9 @@ local function pushAttributes(player)
 	local prof = profiles[player]
 	if prof then
 		player:SetAttribute("Cash", prof.Cash)
+		if player:GetAttribute("CashAtJoin") == nil then
+			player:SetAttribute("CashAtJoin", prof.Cash)
+		end
 		player:SetAttribute("FlashTier", prof.Flashlight)
 		player:SetAttribute("ShoeTier", prof.Shoes)
 		player:SetAttribute("StunTier", prof.Stun)
@@ -1584,13 +1587,18 @@ local function sendToLobby(list, completedChapter)
 		removeFromRound(p)
 	end
 	if not RunService:IsStudio() and PlaceIds.Lobby ~= 0 then
-		local ok, err = pcall(function()
-			local options = Instance.new("TeleportOptions")
-			if completedChapter then
-				options:SetTeleportData({ Completed = completedChapter })
+		local ok, err = true, nil
+		for _, p in list do
+			local earned = math.clamp((p:GetAttribute("Cash") or 0) - (p:GetAttribute("CashAtJoin") or (p:GetAttribute("Cash") or 0)), 0, 2000)
+			local ok1, err1 = pcall(function()
+				local options = Instance.new("TeleportOptions")
+				options:SetTeleportData({ Completed = completedChapter, Earned = earned, From = 2 })
+				TeleportService:TeleportAsync(PlaceIds.Lobby, { p }, options)
+			end)
+			if not ok1 then
+				ok, err = false, err1
 			end
-			TeleportService:TeleportAsync(PlaceIds.Lobby, list, options)
-		end)
+		end
 		if not ok then
 			warn("Teleport to lobby failed: " .. tostring(err))
 			for _, p in list do
@@ -2186,8 +2194,8 @@ function round.applyDifficulty(name, who)
 	ReplicatedStorage:SetAttribute("DifficultyChoosing", false)
 	local d = D()
 	for p, st in roster do
-		st.lives = d.Lives
-		p:SetAttribute("Lives", d.Lives)
+		st.lives = d.Lives + (p:GetAttribute("Up_ExtraLife") or 0)
+		p:SetAttribute("Lives", st.lives)
 	end
 	notifyAll((who and (who.DisplayName .. " chose ") or "Difficulty: ") .. string.upper(name) .. ". Good luck.", d.Color)
 	setObjective("Capture the Behemoth. First, restore power: find " .. Config.FusesNeeded .. " fuses for the generator (Maintenance).")
@@ -2251,7 +2259,7 @@ local function addRider(player)
 	if roster[player] then
 		return
 	end
-	local lives = savedLives[player.UserId] or D().Lives
+	local lives = savedLives[player.UserId] or (D().Lives + (player:GetAttribute("Up_ExtraLife") or 0))
 	savedLives[player.UserId] = nil
 	roster[player] = { lives = lives, sprinting = false, moving = false, flashlight = false }
 	player:SetAttribute("InGame", true)
@@ -2292,8 +2300,37 @@ local function joinRound(player)
 		end
 	end)
 end
+local OUTFITS = {
+	agent = { "http://www.roblox.com/asset/?id=14445685478", "http://www.roblox.com/asset/?id=8961661733" },
+	director = { "http://www.roblox.com/asset/?id=11646123997", "http://www.roblox.com/asset/?id=16419869691" },
+	guest = { "http://www.roblox.com/asset/?id=95561865974073", "http://www.roblox.com/asset/?id=71191835847953" },
+}
+local function readUpgrades(p)
+	local up = {}
+	pcall(function()
+		local td = p:GetJoinData().TeleportData
+		if type(td) == "table" and type(td.UpgradesByUser) == "table" and type(td.UpgradesByUser[tostring(p.UserId)]) == "table" then
+			up = td.UpgradesByUser[tostring(p.UserId)]
+		end
+	end)
+	p:SetAttribute("Up_ExtraLife", math.clamp(tonumber(up.extraLife) or 0, 0, 6))
+	p:SetAttribute("Up_FlashSkin", type(up.flashSkin) == "string" and up.flashSkin:sub(1, 20) or "")
+	p:SetAttribute("Up_Skin", type(up.skin) == "string" and up.skin:sub(1, 20) or "")
+end
+local function wearOutfit(p, char)
+	local o = OUTFITS[p:GetAttribute("Up_Skin") or ""]
+	if not o or not char then
+		return
+	end
+	local sh = char:FindFirstChildOfClass("Shirt") or Instance.new("Shirt", char)
+	sh.ShirtTemplate = o[1]
+	local pa = char:FindFirstChildOfClass("Pants") or Instance.new("Pants", char)
+	pa.PantsTemplate = o[2]
+end
 local function onPlayer(p)
-	p.CharacterAdded:Connect(function()
+	readUpgrades(p)
+	p.CharacterAdded:Connect(function(char)
+		task.defer(wearOutfit, p, char)
 		task.defer(function()
 			if not roster[p] then
 				joinRound(p)
@@ -2301,6 +2338,7 @@ local function onPlayer(p)
 		end)
 	end)
 	if p.Character then
+		task.defer(wearOutfit, p, p.Character)
 		task.defer(joinRound, p)
 	end
 end

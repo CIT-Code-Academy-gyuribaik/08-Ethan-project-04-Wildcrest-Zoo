@@ -37,12 +37,13 @@ local store
 pcall(function()
 	store = DataStoreService:GetDataStore("LobbyProgress_v1")
 end)
-local progress = {} -- [player] = { Completed = { [1] = true, ... } }
+local progress = {} -- [player] = { Completed = { [1] = true, ... }, Cash, Owned, Equip }
+local shopSync
 local function save(player)
 	local prof = progress[player]
 	if store and prof and prof.loaded then
 		pcall(function()
-			store:SetAsync("p_" .. player.UserId, { Completed = prof.Completed })
+			store:SetAsync("p_" .. player.UserId, { Completed = prof.Completed, Cash = prof.Cash, Owned = prof.Owned, Equip = prof.Equip, Spare = prof.Spare })
 		end)
 	end
 end
@@ -59,8 +60,100 @@ local function refreshUnlock(player)
 	player:SetAttribute("Ch3Unlocked", hasBeaten(player, 2))
 	player:SetAttribute("Ch4Unlocked", hasBeaten(player, 3))
 end
+-- SHOP ---------------------------------------------------------------------------------
+local Catalog = require(ReplicatedStorage:WaitForChild("ShopCatalog"))
+local byId = {}
+for _, item in Catalog do
+	byId[item.id] = item
+end
+shopSync = function(player)
+	local prof = progress[player]
+	if not prof then
+		return
+	end
+	player:SetAttribute("Cash", prof.Cash)
+	player:SetAttribute("Spare", prof.Spare or 0)
+	for _, item in Catalog do
+		player:SetAttribute("Own_" .. item.id, prof.Owned[item.id] == true)
+	end
+	player:SetAttribute("Eq_flashSkin", prof.Equip.flashSkin or "")
+	player:SetAttribute("Eq_skin", prof.Equip.skin or "")
+end
+local function upgradesFor(player)
+	local prof = progress[player]
+	if not prof then
+		return {}
+	end
+	local o = prof.Owned
+	return {
+		flash = (o.flash2 and 2) or (o.flash1 and 1) or 0,
+		flashSkin = prof.Equip.flashSkin or "",
+		skin = prof.Equip.skin or "",
+		sprinter = o.sprinter == true,
+		silent = o.silent == true,
+		sixth = o.sixth == true,
+		stunPlus = o.stun and 1 or 0,
+		extraLife = (o.life and 1 or 0) + (prof.Spare or 0),
+	}
+end
+local ShopRF = remotes:FindFirstChild("Shop") or Instance.new("RemoteFunction")
+ShopRF.Name = "Shop"
+ShopRF.Parent = remotes
+ShopRF.OnServerInvoke = function(player, action, id)
+	local prof = progress[player]
+	local item = type(id) == "string" and byId[id]
+	if not prof or not prof.loaded or not item then
+		return false, "Shop is not ready yet."
+	end
+	if action == "buy" and item.consumable then
+		if (prof.Spare or 0) >= (item.max or 5) then
+			return false, ("You can only hold %d."):format(item.max or 5)
+		end
+		if prof.Cash < item.price then
+			return false, ("Not enough cash (need $%d)."):format(item.price)
+		end
+		prof.Cash -= item.price
+		prof.Spare = (prof.Spare or 0) + 1
+		save(player)
+		shopSync(player)
+		return true, ("Bought a Spare Life! You have %d for your next run."):format(prof.Spare)
+	end
+	if action == "buy" then
+		if prof.Owned[id] then
+			return false, "You already own that."
+		end
+		if item.requires and not prof.Owned[item.requires] then
+			return false, "Buy " .. byId[item.requires].name .. " first."
+		end
+		if prof.Cash < item.price then
+			return false, ("Not enough cash (need $%d)."):format(item.price)
+		end
+		prof.Cash -= item.price
+		prof.Owned[id] = true
+		if item.slot then
+			prof.Equip[item.slot] = item.value
+		end
+		save(player)
+		shopSync(player)
+		return true, "Bought " .. item.name .. "!"
+	elseif action == "equip" then
+		if not item.slot or not prof.Owned[id] then
+			return false, "You don't own that."
+		end
+		if prof.Equip[item.slot] == item.value then
+			prof.Equip[item.slot] = nil -- unequip
+		else
+			prof.Equip[item.slot] = item.value
+		end
+		save(player)
+		shopSync(player)
+		return true, prof.Equip[item.slot] and ("Equipped " .. item.name .. ".") or ("Unequipped " .. item.name .. ".")
+	end
+	return false, "?"
+end
+
 local function load(player)
-	local prof = { Completed = {}, loaded = store == nil }
+	local prof = { Completed = {}, loaded = store == nil, Cash = 0, Owned = {}, Equip = {}, Spare = 0 }
 	progress[player] = prof
 	if store then
 		for _ = 1, 3 do
@@ -74,14 +167,44 @@ local function load(player)
 						prof.Completed[tostring(k)] = v == true
 					end
 				end
+				if type(data) == "table" then
+					prof.Cash = math.max(0, math.floor(tonumber(data.Cash) or 0))
+					prof.Spare = math.clamp(math.floor(tonumber(data.Spare) or 0), 0, 5)
+					if type(data.Owned) == "table" then
+						for k, v in data.Owned do
+							prof.Owned[tostring(k)] = v == true
+						end
+					end
+					if type(data.Equip) == "table" then
+						for k, v in data.Equip do
+							prof.Equip[tostring(k)] = tostring(v)
+						end
+					end
+				end
 				break
 			end
 			task.wait(1)
 		end
 	end
-	-- Coming back from a chapter you just beat? (the game place tells us)
+	if not prof.loaded and RunService:IsStudio() then
+		prof.loaded = true -- (Studio without data access) let the shop work for testing
+	end
+	-- Coming back from a chapter? Bank what you earned there (capped so nobody can fake a fortune)
 	local join = player:GetJoinData()
 	local data = join and join.TeleportData
+	if type(data) == "table" and type(data.Earned) == "number" and data.Earned > 0 then
+		local earned = math.clamp(math.floor(data.Earned), 0, 2000)
+		prof.Cash += earned
+		save(player)
+		task.delay(5.5, function()
+			if player.Parent then
+				Notify:FireClient(player, ("You banked $%d from that run! Spend it at the BLACK MARKET stall."):format(earned))
+			end
+		end)
+	end
+	if RunService:IsStudio() and prof.Cash < 1000 then
+		prof.Cash = 3000 -- (Studio only) test money
+	end
 	if type(data) == "table" and type(data.Completed) == "number" then
 		if not prof.Completed[tostring(data.Completed)] then
 			prof.Completed[tostring(data.Completed)] = true
@@ -94,6 +217,7 @@ local function load(player)
 		end
 	end
 	refreshUnlock(player)
+	shopSync(player)
 end
 
 Players.PlayerAdded:Connect(function(p)
@@ -151,7 +275,12 @@ local function depart(van, riders)
 		Departing:FireClient(p)
 	end
 	task.wait(1.5)
-	local data = { FromLobby = true, Chapter = van.chapter, Party = #riders, PartyId = HttpService:GenerateGUID(false) }
+	local byUser = {}
+	for _, p in riders do
+		byUser[tostring(p.UserId)] = upgradesFor(p)
+		save(p)
+	end
+	local data = { FromLobby = true, Chapter = van.chapter, Party = #riders, PartyId = HttpService:GenerateGUID(false), UpgradesByUser = byUser }
 	-- A private server just for this van when possible, otherwise a public one.
 	local ok, err = pcall(function()
 		local code = TeleportService:ReserveServer(placeId)
@@ -166,6 +295,16 @@ local function depart(van, riders)
 			options:SetTeleportData(data)
 			TeleportService:TeleportAsync(placeId, riders, options)
 		end)
+	end
+	if ok then
+		-- spare lives ride along once and are used up
+		for _, p in riders do
+			local prof = progress[p]
+			if prof and (prof.Spare or 0) > 0 then
+				prof.Spare = 0
+				save(p)
+			end
+		end
 	end
 	if not ok then
 		warn("Teleport failed: " .. tostring(err))

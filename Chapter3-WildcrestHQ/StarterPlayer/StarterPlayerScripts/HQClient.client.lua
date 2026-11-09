@@ -155,7 +155,7 @@ local function refreshHUD()
 	objective.Text = RS:GetAttribute("Objective") or ""
 	checklist.Text = (RS:GetAttribute("Phase") or 0) >= 1 and checklistText() or ""
 	local lives = player:GetAttribute("Lives")
-	livesLabel.Text = lives and (player:GetAttribute("AdminGod") and "GOD MODE" or string.rep("<3 ", math.max(lives, 0))) or ""
+	livesLabel.Text = lives and (player:GetAttribute("AdminGod") and "GOD MODE" or (player:GetAttribute("InfiniteLives") and "INFINITE LIVES" or string.rep("<3 ", math.max(lives, 0)))) or ""
 	local d = RS:GetAttribute("Difficulty") or ""
 	diffLabel.Text = d:upper()
 	local dc = Config.Difficulties[d]
@@ -170,38 +170,60 @@ end
 for _, a in { "Objective", "Phase", "Evidence", "EvidenceNeeded", "Keycard1", "Keycard2", "CellsFreed", "SignalCut", "Tapes", "Difficulty", "Broadcast", "BroadcastStalled" } do
 	RS:GetAttributeChangedSignal(a):Connect(refreshHUD)
 end
-for _, a in { "Lives", "StunCharges", "HasStunner", "AdminGod" } do
+for _, a in { "Lives", "StunCharges", "HasStunner", "AdminGod", "InfiniteLives" } do
 	player:GetAttributeChangedSignal(a):Connect(refreshHUD)
 end
 refreshHUD()
 
 -- MOVEMENT / FLASHLIGHT -----------------------------------------------------------------
+local minigameOpen = false
+local cutscenePlaying = false
 local stamina = Config.StaminaMax
 local sprintHeld = false
 local flashlightOn = false
 local flash
-local function ensureFlash()
-	local char = player.Character
-	local head = char and char:FindFirstChild("Head")
-	if not head then
-		return
-	end
-	flash = head:FindFirstChild("Flashlight")
-	if not flash then
-		flash = Instance.new("SpotLight")
-		flash.Name = "Flashlight"
-		flash.Angle = 55
-		flash.Range = 55
-		flash.Brightness = 2.4
-		flash.Color = Color3.fromRGB(255, 244, 220)
-		flash.Shadows = true
-		flash.Face = Enum.NormalId.Front
-		flash.Parent = head
-	end
-	flash.Enabled = flashlightOn
+-- the flashlight rides on the camera (a light inside the head gets blocked by big hair/hats)
+local flashRig = Instance.new("Part")
+flashRig.Name = "FlashlightRig"
+flashRig.Anchored, flashRig.CanCollide, flashRig.CanQuery, flashRig.CanTouch = true, false, false, false
+flashRig.Transparency = 1
+flashRig.Size = Vector3.new(0.2, 0.2, 0.2)
+flashRig.Parent = workspace.CurrentCamera
+flash = Instance.new("SpotLight")
+flash.Name = "Flashlight"
+flash.Angle = 50
+flash.Range = 60
+flash.Brightness = 3
+flash.Color = Color3.fromRGB(255, 244, 220)
+flash.Shadows = true
+flash.Face = Enum.NormalId.Front
+flash.Parent = flashRig
+local glowNear = Instance.new("PointLight")
+glowNear.Range = 9
+glowNear.Brightness = 0.4
+glowNear.Color = Color3.fromRGB(255, 240, 215)
+glowNear.Parent = flashRig
+RunService:BindToRenderStep("FlashlightFollow", Enum.RenderPriority.Camera.Value + 5, function()
+	flashRig.CFrame = camera.CFrame * CFrame.new(0.6, -0.5, -0.4)
+end)
+local FLASH_SKINS = { [""] = Color3.fromRGB(255, 244, 220), ice = Color3.fromRGB(170, 220, 255), uv = Color3.fromRGB(190, 120, 255), red = Color3.fromRGB(255, 110, 100) }
+local function applyFlashUpgrades()
+	local tier = player:GetAttribute("Up_Flash") or 0
+	flash.Brightness = 3 + tier * 0.9
+	flash.Range = 60 + tier * 15
+	flash.Angle = 50 + tier * 6
+	flash.Color = FLASH_SKINS[player:GetAttribute("Up_FlashSkin") or ""] or FLASH_SKINS[""]
+	glowNear.Color = flash.Color
 end
-local minigameOpen = false
-local cutscenePlaying = false
+for _, a in { "Up_Flash", "Up_FlashSkin" } do
+	player:GetAttributeChangedSignal(a):Connect(applyFlashUpgrades)
+end
+applyFlashUpgrades()
+local function ensureFlash()
+	local on = flashlightOn and not cutscenePlaying
+	flash.Enabled = on
+	glowNear.Enabled = on
+end
 local lastSent = {}
 local sendAt = 0
 RunService.Heartbeat:Connect(function(dt)
@@ -212,10 +234,11 @@ RunService.Heartbeat:Connect(function(dt)
 	end
 	local moving = hum.MoveDirection.Magnitude > 0.1 and not player:GetAttribute("Hidden")
 	local sprinting = sprintHeld and moving and stamina > 1 and not minigameOpen
+	local drainMul = player:GetAttribute("Up_Sprinter") and 0.7 or 1 -- Sprinter skill
 	if sprinting then
-		stamina = math.max(0, stamina - Config.StaminaDrain * dt)
+		stamina = math.max(0, stamina - Config.StaminaDrain * drainMul * dt)
 	else
-		stamina = math.min(Config.StaminaMax, stamina + Config.StaminaRegen * dt * (moving and 0.6 or 1))
+		stamina = math.min(Config.StaminaMax, stamina + Config.StaminaRegen * dt * (moving and 0.6 or 1) / drainMul)
 	end
 	local speed = sprinting and Config.SprintSpeed or Config.WalkSpeed
 	if minigameOpen or cutscenePlaying then
@@ -1800,6 +1823,72 @@ do
 			local fl = part.Position.Y > 60 and "ROOF" or (part.Position.Y > 40 and "FLOOR 3" or (part.Position.Y > 19 and "FLOOR 2" or "GROUND"))
 			txt.Text = ("%s (%s)  %dm"):format(name or "", fl, math.floor(d / 3.5))
 			bb.Enabled = d > 8
+		end
+	end)
+end
+
+-- FIRST PERSON: free the mouse whenever something needs clicking (minigames, notes, menus) or M is held/toggled
+do
+	local freeMouse = false
+	UserInputService.InputBegan:Connect(function(input, processed)
+		if not processed and input.KeyCode == Enum.KeyCode.M then
+			freeMouse = not freeMouse
+		end
+	end)
+	RunService:BindToRenderStep("FreeMouse", Enum.RenderPriority.Camera.Value + 10, function()
+		local needMouse = freeMouse or minigameOpen or paper.Visible or picker.Visible or player:GetAttribute("AdminPanelOpen") == true
+		if needMouse then
+			UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+			UserInputService.MouseIconEnabled = true
+		end
+	end)
+end
+
+-- CASH + SIXTH SENSE -------------------------------------------------------------------------
+do
+	local cashLabel = label(gui, { Size = UDim2.fromOffset(240, 26), Position = UDim2.new(1, -264, 0, 100), TextXAlignment = Enum.TextXAlignment.Right, TextSize = 20, TextColor3 = Color3.fromRGB(130, 255, 150), Text = "" })
+	local function refreshCash()
+		local v = player:GetAttribute("RunCash") or 0
+		cashLabel.Text = v > 0 and ("$%d this run"):format(v) or ""
+	end
+	player:GetAttributeChangedSignal("RunCash"):Connect(refreshCash)
+	refreshCash()
+	local senseLabel = label(gui, { Size = UDim2.fromOffset(300, 22), Position = UDim2.new(0, 24, 1, -150), TextXAlignment = Enum.TextXAlignment.Left, TextSize = 16, TextColor3 = Color3.fromRGB(220, 160, 255), Text = "" })
+	local readyAt = 0
+	UserInputService.InputBegan:Connect(function(input, processed)
+		if processed or input.KeyCode ~= Enum.KeyCode.R or not player:GetAttribute("Up_Sixth") or os.clock() < readyAt or cutscenePlaying then
+			return
+		end
+		readyAt = os.clock() + 30
+		sound(Config.Sounds.Heartbeat, 0.8, 0.6)
+		local folder = workspace:FindFirstChild("Monsters")
+		local hl = {}
+		if folder then
+			for _, m in folder:GetChildren() do
+				local h = Instance.new("Highlight")
+				h.Adornee = m
+				h.FillColor = Color3.fromRGB(200, 60, 255)
+				h.FillTransparency = 0.6
+				h.OutlineColor = Color3.fromRGB(240, 200, 255)
+				h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+				h.Parent = camera
+				table.insert(hl, h)
+			end
+		end
+		notice("Sixth Sense: you can feel where they are...", Color3.fromRGB(220, 160, 255), 3)
+		task.delay(4, function()
+			for _, h in hl do
+				h:Destroy()
+			end
+		end)
+	end)
+	RunService.Heartbeat:Connect(function()
+		if not player:GetAttribute("Up_Sixth") then
+			senseLabel.Text = ""
+		elseif os.clock() < readyAt then
+			senseLabel.Text = ("SIXTH SENSE [R]: %ds"):format(math.ceil(readyAt - os.clock()))
+		else
+			senseLabel.Text = "SIXTH SENSE [R]: ready"
 		end
 	end)
 end

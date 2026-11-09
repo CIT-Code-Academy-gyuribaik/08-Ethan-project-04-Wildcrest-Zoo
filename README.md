@@ -26,6 +26,19 @@ places themselves).
 
 Chapter 5 (the island) is the finale – coming next.
 
+## Cash and the lobby shop
+
+- Every chapter pays out cash (bundles to find + a finish bonus by difficulty). When the van
+  takes you back, the chapter sends what you **earned** on that run; the lobby banks it
+  (max $2,000 per run).
+- Spend it at the **Black Market Supplies** stall in the lobby: flashlight upgrades, flashlight
+  beam colours, outfits (SWAT Agent, Director's Suit, Lost Guest), skills (Sprinter, Silent
+  Steps, Sixth Sense, Stun Battery, Extra Life) and **Spare Lives** ($75, up to 5, used up on
+  your next run).
+- The van carries your purchases into the chapter (`UpgradesByUser` in the teleport data).
+- The **Infinite Lives** game pass works in every chapter.
+- Every place plays in **first person** (press **M** to free the mouse).
+
 ## Script layout
 
 Paths mirror where each script lives in Roblox Studio:
