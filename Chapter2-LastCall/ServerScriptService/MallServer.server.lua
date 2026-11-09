@@ -2277,6 +2277,9 @@ local function addRider(player)
 end
 
 local function joinRound(player)
+	if not RunService:IsStudio() and game.PrivateServerId == "" and not player:GetAttribute("RouteFailed") then
+		return -- public landing server: PartyRouter moves you to your party's own private server
+	end
 	while round.ending and player.Parent do
 		task.wait(0.5)
 	end

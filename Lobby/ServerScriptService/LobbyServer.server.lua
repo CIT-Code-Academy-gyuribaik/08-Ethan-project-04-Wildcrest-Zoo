@@ -162,6 +162,7 @@ local function load(player)
 			end)
 			if ok then
 				prof.loaded = true
+				prof.firstTime = data == nil
 				if type(data) == "table" and type(data.Completed) == "table" then
 					for k, v in data.Completed do
 						prof.Completed[tostring(k)] = v == true
@@ -218,6 +219,8 @@ local function load(player)
 	end
 	refreshUnlock(player)
 	shopSync(player)
+	-- brand new (no saved data yet), or Studio: show the how-to-play guide
+	player:SetAttribute("FirstTime", prof.firstTime == true or RunService:IsStudio() or next(prof.Completed) == nil)
 end
 
 Players.PlayerAdded:Connect(function(p)

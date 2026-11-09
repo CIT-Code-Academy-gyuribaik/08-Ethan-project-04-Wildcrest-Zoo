@@ -1816,6 +1816,9 @@ end
 -- Joining: everyone who spawns in this place is in the round. A van's players
 -- arrive together; anyone arriving mid-round joins the round in progress.
 local function joinRound(player)
+	if not RunService:IsStudio() and game.PrivateServerId == "" and not player:GetAttribute("RouteFailed") then
+		return -- public landing server: PartyRouter moves you to your party's own private server
+	end
 	-- arriving during the escape cutscene waits for the next round instead of cancelling it
 	while round.ending and player.Parent do
 		task.wait(0.5)

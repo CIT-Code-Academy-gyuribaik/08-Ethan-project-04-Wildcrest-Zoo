@@ -39,6 +39,15 @@ Chapter 5 (the island) is the finale – coming next.
 - The **Infinite Lives** game pass works in every chapter.
 - Every place plays in **first person** (press **M** to free the mouse).
 
+## New players and parties
+
+- **Tutorial:** the lobby opens a 6-page "How to play" guide the first time you join (and a
+  **HOW TO PLAY** button any time). Arrows and a dotted path point to the vans and the shop.
+  Every chapter shows a controls card when you start.
+- **Own server per party:** everyone in the same van gets their own private server of the
+  chapter. The lobby sends a `PartyId`; each chapter's `PartyRouter` groups the party on
+  arrival, reserves a server and moves them there (only works in the published game).
+
 ## Script layout
 
 Paths mirror where each script lives in Roblox Studio:
