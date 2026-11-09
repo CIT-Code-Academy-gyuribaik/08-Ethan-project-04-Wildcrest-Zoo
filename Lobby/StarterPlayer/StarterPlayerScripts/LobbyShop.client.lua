@@ -33,6 +33,15 @@ local function refreshCash()
 end
 player:GetAttributeChangedSignal("Cash"):Connect(refreshCash)
 refreshCash()
+-- secret endings found (each chapter hides one strange item)
+local secretLbl = new("TextLabel", gui, { Size = UDim2.fromOffset(260, 26), Position = UDim2.new(1, -280, 0, 102), BackgroundTransparency = 0.35, BackgroundColor3 = Color3.fromRGB(28, 18, 40),
+	TextColor3 = Color3.fromRGB(205, 180, 255), Font = Enum.Font.GothamBold, TextSize = 14, Text = "" })
+corner(secretLbl)
+local function refreshSecrets()
+	secretLbl.Text = ("SECRET ENDINGS: %d/4  (find the ??? item)"):format(player:GetAttribute("Secrets") or 0)
+end
+player:GetAttributeChangedSignal("Secrets"):Connect(refreshSecrets)
+refreshSecrets()
 
 -- the shop window
 local win = new("Frame", gui, { Size = UDim2.fromOffset(640, 470), Position = UDim2.new(0.5, -320, 0.5, -235), BackgroundColor3 = Color3.fromRGB(18, 20, 22), Visible = false, ZIndex = 10 })

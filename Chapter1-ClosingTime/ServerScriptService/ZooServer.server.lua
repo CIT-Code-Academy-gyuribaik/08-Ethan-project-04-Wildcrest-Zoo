@@ -1053,7 +1053,7 @@ local function sendToLobby(list, completedChapter)
 			local earned = math.clamp((p:GetAttribute("Cash") or 0) - (p:GetAttribute("CashAtJoin") or (p:GetAttribute("Cash") or 0)), 0, 2000)
 			local ok1, err1 = pcall(function()
 				local options = Instance.new("TeleportOptions")
-				options:SetTeleportData({ Completed = completedChapter, Earned = earned, From = 1 })
+				options:SetTeleportData({ Completed = completedChapter, Earned = earned, From = 1, Secret = p:GetAttribute("SecretEnding") and 1 or nil })
 				TeleportService:TeleportAsync(PlaceIds.Lobby, { p }, options)
 			end)
 			if not ok1 then
@@ -1165,6 +1165,13 @@ local function win()
 		return
 	end
 	round.ending = true
+	local secretFound = workspace:GetAttribute("SecretFound") == true
+	if secretFound then
+		for _, p in inGamePlayers() do
+			round.addCash(p, 150)
+		end
+		game:GetService("ServerStorage").SecretWin:Fire(inGamePlayers(), Config.ReturnToLobbyDelay)
+	end
 	local secs = math.floor(os.clock() - round.startTime)
 	-- Nothing can catch you during the escape cutscene.
 	clearMonsters()
@@ -1180,7 +1187,7 @@ local function win()
 		Escaped:FireClient(p, secs, round.sampleCount or 0, Config.SamplesTotal, round.difficulty, reward)
 	end
 	setObjective("You escaped with the money!")
-	task.delay(Config.ReturnToLobbyDelay, function()
+	task.delay(Config.ReturnToLobbyDelay + (secretFound and 26 or 0), function()
 		local list = inGamePlayers()
 		resetRound()
 		sendToLobby(list, 1) -- tells the lobby: Chapter 1 beaten (unlocks Chapter 2)
@@ -1684,6 +1691,7 @@ end)
 local blastTemplate = yard:FindFirstChild("BlastDoor"):Clone()
 
 function resetRound()
+	workspace:SetAttribute("SecretFound", nil)
 	round.active = false
 	round.ending = false
 	round.choosing = false

@@ -48,6 +48,13 @@ Chapter 5 (the island) is the finale – coming next.
   chapter. The lobby sends a `PartyId`; each chapter's `PartyRouter` groups the party on
   arrival, reserves a server and moves them there (only works in the published game).
 
+## Secret endings
+
+Every chapter hides a glowing **???** item (purple sparkles). If anyone in the party picks it up
+and you win, a secret cutscene plays after the normal ending: the Director in his monitoring
+room, then a map of the island (a tease for Chapter 5). +$150, and the lobby tracks
+**SECRET ENDINGS x/4** (`SecretEnding.server.lua` + `SecretEndingClient.client.lua` in each chapter).
+
 ## Script layout
 
 Paths mirror where each script lives in Roblox Studio:

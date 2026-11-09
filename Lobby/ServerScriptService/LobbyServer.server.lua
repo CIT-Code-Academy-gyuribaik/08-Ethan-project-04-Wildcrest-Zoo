@@ -43,7 +43,7 @@ local function save(player)
 	local prof = progress[player]
 	if store and prof and prof.loaded then
 		pcall(function()
-			store:SetAsync("p_" .. player.UserId, { Completed = prof.Completed, Cash = prof.Cash, Owned = prof.Owned, Equip = prof.Equip, Spare = prof.Spare })
+			store:SetAsync("p_" .. player.UserId, { Completed = prof.Completed, Cash = prof.Cash, Owned = prof.Owned, Equip = prof.Equip, Spare = prof.Spare, Secrets = prof.Secrets })
 		end)
 	end
 end
@@ -153,7 +153,7 @@ ShopRF.OnServerInvoke = function(player, action, id)
 end
 
 local function load(player)
-	local prof = { Completed = {}, loaded = store == nil, Cash = 0, Owned = {}, Equip = {}, Spare = 0 }
+	local prof = { Completed = {}, loaded = store == nil, Cash = 0, Owned = {}, Equip = {}, Spare = 0, Secrets = {} }
 	progress[player] = prof
 	if store then
 		for _ = 1, 3 do
@@ -171,6 +171,11 @@ local function load(player)
 				if type(data) == "table" then
 					prof.Cash = math.max(0, math.floor(tonumber(data.Cash) or 0))
 					prof.Spare = math.clamp(math.floor(tonumber(data.Spare) or 0), 0, 5)
+					if type(data.Secrets) == "table" then
+						for k, v in data.Secrets do
+							prof.Secrets[tostring(k)] = v == true
+						end
+					end
 					if type(data.Owned) == "table" then
 						for k, v in data.Owned do
 							prof.Owned[tostring(k)] = v == true
@@ -217,6 +222,28 @@ local function load(player)
 			end)
 		end
 	end
+	-- secret endings (found the hidden item in a chapter, then won)
+	if type(data) == "table" and type(data.Secret) == "number" and data.Secret >= 1 and data.Secret <= 4 then
+		local k = tostring(math.floor(data.Secret))
+		if not prof.Secrets[k] then
+			prof.Secrets[k] = true
+			save(player)
+			local n = 0
+			for _ in prof.Secrets do
+				n += 1
+			end
+			task.delay(8, function()
+				if player.Parent then
+					Notify:FireClient(player, ("SECRET ENDING %s unlocked! Secrets found: %d/4"):format(k, n))
+				end
+			end)
+		end
+	end
+	local secretCount = 0
+	for _ in prof.Secrets do
+		secretCount += 1
+	end
+	player:SetAttribute("Secrets", secretCount)
 	refreshUnlock(player)
 	shopSync(player)
 	-- brand new (no saved data yet), or Studio: show the how-to-play guide

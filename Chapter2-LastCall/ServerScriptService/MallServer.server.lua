@@ -1592,7 +1592,7 @@ local function sendToLobby(list, completedChapter)
 			local earned = math.clamp((p:GetAttribute("Cash") or 0) - (p:GetAttribute("CashAtJoin") or (p:GetAttribute("Cash") or 0)), 0, 2000)
 			local ok1, err1 = pcall(function()
 				local options = Instance.new("TeleportOptions")
-				options:SetTeleportData({ Completed = completedChapter, Earned = earned, From = 2 })
+				options:SetTeleportData({ Completed = completedChapter, Earned = earned, From = 2, Secret = p:GetAttribute("SecretEnding") and 2 or nil })
 				TeleportService:TeleportAsync(PlaceIds.Lobby, { p }, options)
 			end)
 			if not ok1 then
@@ -1705,6 +1705,13 @@ local function win()
 		return
 	end
 	round.ending = true
+	local secretFound = workspace:GetAttribute("SecretFound") == true
+	if secretFound then
+		for _, p in inGamePlayers() do
+			addCash(p, 150)
+		end
+		game:GetService("ServerStorage").SecretWin:Fire(inGamePlayers(), Config.ReturnToLobbyDelay)
+	end
 	local secs = math.floor(os.clock() - round.startTime)
 	clearMonsters()
 	for _, p in inGamePlayers() do
@@ -1725,7 +1732,7 @@ local function win()
 		Escaped:FireClient(p, secs, 1, 1, round.difficulty, reward, mvp and ("MVP: %s - %d damage to B-00"):format(mvp, mvpD) or nil)
 	end
 	setObjective("B-00 captured. Mission complete.")
-	task.delay(Config.ReturnToLobbyDelay, function()
+	task.delay(Config.ReturnToLobbyDelay + (secretFound and 26 or 0), function()
 		local list = inGamePlayers()
 		resetRound()
 		sendToLobby(list, 2) -- tells the lobby: Chapter 2 beaten
@@ -2129,6 +2136,7 @@ end)
 
 -- Round setup ---------------------------------------------------------------------------------------
 function resetRound()
+	workspace:SetAttribute("SecretFound", nil)
 	round.active = false
 	round.ending = false
 	round.choosing = false

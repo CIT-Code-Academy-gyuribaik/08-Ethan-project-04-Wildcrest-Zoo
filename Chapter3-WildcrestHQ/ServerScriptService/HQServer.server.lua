@@ -787,7 +787,7 @@ local function sendToLobby(list, completed)
 	-- one teleport per player so each carries their own earnings back to the lobby bank
 	for _, p in list do
 		local options = Instance.new("TeleportOptions")
-		options:SetTeleportData({ Completed = completed, Earned = math.clamp(p:GetAttribute("RunCash") or 0, 0, Config.MaxEarnedPerRun or 2000), From = 3 })
+		options:SetTeleportData({ Completed = completed, Earned = math.clamp(p:GetAttribute("RunCash") or 0, 0, Config.MaxEarnedPerRun or 2000), From = 3, Secret = p:GetAttribute("SecretEnding") and 3 or nil })
 		local ok, err = pcall(function()
 			TeleportService:TeleportAsync(PlaceIds.Lobby, { p }, options)
 		end)
@@ -1606,6 +1606,13 @@ local function win()
 		return
 	end
 	round.ending = true
+	local secretFound = workspace:GetAttribute("SecretFound") == true
+	if secretFound then
+		for _, p in inGamePlayers() do
+			addCash(p, 150, "for the SECRET ENDING")
+		end
+		game:GetService("ServerStorage").SecretWin:Fire(inGamePlayers(), Config.ReturnToLobbyDelay)
+	end
 	local secs = math.floor(os.clock() - (round.startTime or os.clock()))
 	clearMonsters()
 	for _, p in inGamePlayers() do
@@ -1621,7 +1628,7 @@ local function win()
 		addCash(p, bonus, "for escaping (" .. (round.difficulty or "Normal") .. ")")
 	end
 	local id = round.id
-	task.delay(Config.ReturnToLobbyDelay, function()
+	task.delay(Config.ReturnToLobbyDelay + (secretFound and 26 or 0), function()
 		if round.id ~= id then
 			return
 		end
@@ -1772,6 +1779,7 @@ local function resetWorld()
 	end
 end
 function round.resetRound()
+	workspace:SetAttribute("SecretFound", nil)
 	round.id += 1
 	clearMonsters()
 	itemsFolder:ClearAllChildren()
