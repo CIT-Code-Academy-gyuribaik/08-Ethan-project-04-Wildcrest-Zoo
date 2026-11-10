@@ -43,7 +43,7 @@ local function save(player)
 	local prof = progress[player]
 	if store and prof and prof.loaded then
 		pcall(function()
-			store:SetAsync("p_" .. player.UserId, { Completed = prof.Completed, Cash = prof.Cash, Owned = prof.Owned, Equip = prof.Equip, Spare = prof.Spare, Secrets = prof.Secrets })
+			store:SetAsync("p_" .. player.UserId, { Completed = prof.Completed, Cash = prof.Cash, Owned = prof.Owned, Equip = prof.Equip, Spare = prof.Spare, Secrets = prof.Secrets, Ach = prof.Ach, Wins = prof.Wins, Spent = prof.Spent, Best = prof.Best, Settings = prof.Settings, LastDay = prof.LastDay, Streak = prof.Streak, BestTime = prof.BestTime })
 		end)
 	end
 end
@@ -60,6 +60,110 @@ local function refreshUnlock(player)
 	player:SetAttribute("Ch3Unlocked", hasBeaten(player, 2))
 	player:SetAttribute("Ch4Unlocked", hasBeaten(player, 3))
 end
+-- ACHIEVEMENTS ---------------------------------------------------------------------------
+local AchList = require(ReplicatedStorage:WaitForChild("AchievementList"))
+local achById = {}
+for _, a in AchList do
+	achById[a.id] = a
+end
+local AchRemote = remote("Achievement")
+local function achSync(player)
+	local prof = progress[player]
+	if not prof then
+		return
+	end
+	for _, a in AchList do
+		player:SetAttribute("Ach_" .. a.id, prof.Ach[a.id] == true)
+	end
+end
+local function grant(player, id)
+	local prof = progress[player]
+	local a = achById[id]
+	if not prof or not prof.loaded or not a or prof.Ach[id] then
+		return
+	end
+	prof.Ach[id] = true
+	prof.Cash += a.reward
+	save(player)
+	if shopSync then
+		shopSync(player)
+	end
+	achSync(player)
+	AchRemote:FireClient(player, id)
+	if prof.Cash >= 5000 then
+		grant(player, "rich")
+	end
+	local count = 0
+	for _ in prof.Ach do
+		count += 1
+	end
+	if count >= 15 then
+		grant(player, "hunter")
+	end
+end
+local function shopAch(player)
+	local prof = progress[player]
+	if not prof then
+		return
+	end
+	local o = prof.Owned
+	if (prof.Spent or 0) > 0 or next(o) ~= nil then
+		grant(player, "shopper")
+	end
+	if (prof.Spent or 0) >= 2000 then
+		grant(player, "bigspender")
+	end
+	if o.flash2 then
+		grant(player, "maxpower")
+	end
+	if o.beam_ice and o.beam_uv and o.beam_red then
+		grant(player, "lightshow")
+	end
+	if o.skin_agent and o.skin_director and o.skin_guest then
+		grant(player, "fashion")
+	end
+	if o.sprinter and o.silent and o.sixth and o.stun and o.life then
+		grant(player, "loaded")
+	end
+	if (prof.Spare or 0) >= 5 then
+		grant(player, "stocked")
+	end
+	if prof.Cash >= 5000 then
+		grant(player, "rich")
+	end
+end
+-- SETTINGS + DAILY REWARD ----------------------------------------------------------------
+local SettingsRemote = remote("Settings")
+local DailyRemote = remote("Daily")
+local function settingsSync(player)
+	local prof = progress[player]
+	if not prof then
+		return
+	end
+	for _, k in { "Bright", "Sens", "Vol" } do
+		player:SetAttribute("Set_" .. k, prof.Settings[k])
+	end
+end
+SettingsRemote.OnServerEvent:Connect(function(player, key, value)
+	local prof = progress[player]
+	if not prof or (key ~= "Bright" and key ~= "Sens" and key ~= "Vol") or type(value) ~= "number" then
+		return
+	end
+	prof.Settings[key] = math.clamp(math.floor(value), 0, 10)
+	prof.settingsDirty = true
+	settingsSync(player)
+end)
+task.spawn(function()
+	while true do
+		task.wait(30)
+		for p, prof in progress do
+			if prof.settingsDirty then
+				prof.settingsDirty = nil
+				save(p)
+			end
+		end
+	end
+end)
 -- SHOP ---------------------------------------------------------------------------------
 local Catalog = require(ReplicatedStorage:WaitForChild("ShopCatalog"))
 local byId = {}
@@ -94,6 +198,7 @@ local function upgradesFor(player)
 		sixth = o.sixth == true,
 		stunPlus = o.stun and 1 or 0,
 		extraLife = (o.life and 1 or 0) + (prof.Spare or 0),
+		settings = prof.Settings,
 	}
 end
 local ShopRF = remotes:FindFirstChild("Shop") or Instance.new("RemoteFunction")
@@ -114,6 +219,8 @@ ShopRF.OnServerInvoke = function(player, action, id)
 		end
 		prof.Cash -= item.price
 		prof.Spare = (prof.Spare or 0) + 1
+		prof.Spent = (prof.Spent or 0) + item.price
+		task.defer(shopAch, player)
 		save(player)
 		shopSync(player)
 		return true, ("Bought a Spare Life! You have %d for your next run."):format(prof.Spare)
@@ -130,6 +237,11 @@ ShopRF.OnServerInvoke = function(player, action, id)
 		end
 		prof.Cash -= item.price
 		prof.Owned[id] = true
+		prof.Spent = (prof.Spent or 0) + item.price
+		task.defer(shopAch, player)
+		if item.slot == "skin" then
+			task.defer(grant, player, "dressed")
+		end
 		if item.slot then
 			prof.Equip[item.slot] = item.value
 		end
@@ -145,6 +257,9 @@ ShopRF.OnServerInvoke = function(player, action, id)
 		else
 			prof.Equip[item.slot] = item.value
 		end
+		if item.slot == "skin" and prof.Equip.skin then
+			task.defer(grant, player, "dressed")
+		end
 		save(player)
 		shopSync(player)
 		return true, prof.Equip[item.slot] and ("Equipped " .. item.name .. ".") or ("Unequipped " .. item.name .. ".")
@@ -153,7 +268,7 @@ ShopRF.OnServerInvoke = function(player, action, id)
 end
 
 local function load(player)
-	local prof = { Completed = {}, loaded = store == nil, Cash = 0, Owned = {}, Equip = {}, Spare = 0, Secrets = {} }
+	local prof = { Completed = {}, loaded = store == nil, Cash = 0, Owned = {}, Equip = {}, Spare = 0, Secrets = {}, Ach = {}, Wins = 0, Spent = 0, Best = {}, Settings = {}, LastDay = 0, Streak = 0, BestTime = {} }
 	progress[player] = prof
 	if store then
 		for _ = 1, 3 do
@@ -176,6 +291,27 @@ local function load(player)
 							prof.Secrets[tostring(k)] = v == true
 						end
 					end
+					if type(data.Ach) == "table" then
+						for k, v in data.Ach do
+							prof.Ach[tostring(k)] = v == true
+						end
+					end
+					prof.Wins = math.max(0, math.floor(tonumber(data.Wins) or 0))
+					prof.Spent = math.max(0, math.floor(tonumber(data.Spent) or 0))
+					if type(data.Best) == "table" then
+						for k, v in data.Best do
+							prof.Best[tostring(k)] = tonumber(v) or 0
+						end
+					end
+					for _, key in { "Settings", "BestTime" } do
+						if type(data[key]) == "table" then
+							for k, v in data[key] do
+								prof[key][tostring(k)] = tonumber(v)
+							end
+						end
+					end
+					prof.LastDay = tonumber(data.LastDay) or 0
+					prof.Streak = tonumber(data.Streak) or 0
 					if type(data.Owned) == "table" then
 						for k, v in data.Owned do
 							prof.Owned[tostring(k)] = v == true
@@ -246,6 +382,139 @@ local function load(player)
 	player:SetAttribute("Secrets", secretCount)
 	refreshUnlock(player)
 	shopSync(player)
+	settingsSync(player)
+	-- DAILY REWARD: come back each day; days in a row pay more (up to day 7)
+	if prof.loaded then
+		local today = math.floor(os.time() / 86400)
+		if (prof.LastDay or 0) ~= today then
+			local streak = ((prof.LastDay or 0) == today - 1) and math.min((prof.Streak or 0) + 1, 7) or 1
+			prof.LastDay, prof.Streak = today, streak
+			local amount = 50 + 25 * (streak - 1)
+			prof.Cash += amount
+			save(player)
+			shopSync(player)
+			task.delay(3, function()
+				if player.Parent then
+					DailyRemote:FireClient(player, streak, amount)
+				end
+			end)
+		end
+	end
+	achSync(player)
+	-- ACHIEVEMENTS: check what this player has earned (a moment later, so the pop-ups show once you've loaded in)
+	task.delay(6, function()
+		if not player.Parent or not prof.loaded then
+			return
+		end
+		if type(data) == "table" and type(data.Completed) == "number" then
+			prof.Wins = (prof.Wins or 0) + 1
+			local run
+			if type(data.Run) == "string" then
+				pcall(function()
+					run = HttpService:JSONDecode(data.Run)
+				end)
+			end
+			if type(run) == "table" then
+				local RANK = { Easy = 1, Normal = 2, Hard = 3, Nightmare = 4 }
+				local chKey = tostring(math.floor(data.Completed))
+				local rank = RANK[run.d] or 0
+				if rank > (tonumber(prof.Best[chKey]) or 0) then
+					prof.Best[chKey] = rank
+				end
+				local secs = tonumber(run.t)
+				if secs and secs >= 30 and secs < (tonumber(prof.BestTime[chKey]) or math.huge) then
+					secs = math.floor(secs)
+					prof.BestTime[chKey] = secs
+					task.spawn(function()
+						pcall(function()
+							DataStoreService:GetOrderedDataStore("BestTime_ch" .. chKey):SetAsync("p_" .. player.UserId, secs)
+						end)
+					end)
+					Notify:FireClient(player, ("NEW PERSONAL BEST on Chapter %s: %d:%02d"):format(chKey, secs // 60, secs % 60))
+				end
+				local t5 = tonumber(run.t)
+				if t5 and t5 > 0 and t5 < 300 then
+					grant(player, "speed5")
+				end
+				if tonumber(run.l) == 1 then
+					grant(player, "thread")
+				end
+				if (tonumber(run.c) or 0) >= 5 then
+					grant(player, "nevergiveup")
+				end
+				if (tonumber(run.n) or 0) >= 6 then
+					grant(player, "fullparty")
+				end
+				if run.d == "Hard" or run.d == "Nightmare" then
+					grant(player, "hard")
+				end
+				if run.d == "Nightmare" then
+					grant(player, "nightmare")
+				end
+				if tonumber(run.c) == 0 then
+					grant(player, "flawless")
+				end
+				local t = tonumber(run.t)
+				if t and t > 0 and t < 600 then
+					grant(player, "speed")
+				end
+				local n = tonumber(run.n)
+				if n and n >= 3 then
+					grant(player, "squad")
+				elseif n == 1 then
+					grant(player, "solo")
+				end
+			end
+			save(player)
+		end
+		for ch = 1, 4 do
+			if prof.Completed[tostring(ch)] then
+				grant(player, "ch" .. ch)
+			end
+		end
+		if (prof.Wins or 0) >= 10 then
+			grant(player, "veteran")
+		end
+		if (prof.Wins or 0) >= 25 then
+			grant(player, "veteran25")
+		end
+		if (prof.Wins or 0) >= 50 then
+			grant(player, "veteran50")
+		end
+		local hardAll, nightmareAll = true, true
+		for ch = 1, 4 do
+			local b = tonumber(prof.Best[tostring(ch)]) or 0
+			if b < 3 then
+				hardAll = false
+			end
+			if b < 4 then
+				nightmareAll = false
+			end
+		end
+		if hardAll then
+			grant(player, "hardall")
+		end
+		if nightmareAll then
+			grant(player, "nightmareall")
+		end
+		local sc = 0
+		for _ in prof.Secrets do
+			sc += 1
+		end
+		if sc >= 1 then
+			grant(player, "secret1")
+		end
+		if sc >= 2 then
+			grant(player, "secret2")
+		end
+		if sc >= 4 then
+			grant(player, "secret4")
+		end
+		shopAch(player)
+		if prof.Equip.skin and prof.Equip.skin ~= "" then
+			grant(player, "dressed")
+		end
+	end)
 	-- brand new (no saved data yet), or Studio: show the how-to-play guide
 	player:SetAttribute("FirstTime", prof.firstTime == true or RunService:IsStudio() or next(prof.Completed) == nil)
 end

@@ -77,6 +77,31 @@ Players.PlayerAdded:Connect(function(p)
 	pcall(function()
 		td = p:GetJoinData().TeleportData
 	end)
+	-- Found this chapter by search (not from a lobby van)? Chapters start in the LOBBY.
+	local fromLobby = type(td) == "table" and td.FromLobby == true
+	local isOwner = game.CreatorType == Enum.CreatorType.User and p.UserId == game.CreatorId
+	if not fromLobby and not isOwner then
+		task.defer(banner, p, "Closing Time starts in the LOBBY.\nTaking you there now...")
+		task.delay(3, function()
+			if not p.Parent then
+				return
+			end
+			local ok = pcall(function()
+				local PlaceIds = require(game:GetService("ReplicatedStorage"):WaitForChild("PlaceIds"))
+				TeleportService:TeleportAsync(PlaceIds.Lobby, { p })
+			end)
+			if not ok and p.Parent then
+				-- couldn't send you: just play here
+				p:SetAttribute("RouteFailed", true)
+				local pg = p:FindFirstChildOfClass("PlayerGui")
+				if pg and pg:FindFirstChild("RouteBanner") then
+					pg.RouteBanner:Destroy()
+				end
+				p:LoadCharacter()
+			end
+		end)
+		return
+	end
 	local id = (type(td) == "table" and type(td.PartyId) == "string") and td.PartyId or ("solo_" .. p.UserId)
 	local expected = (type(td) == "table" and tonumber(td.Party)) or 1
 	local g = groups[id]

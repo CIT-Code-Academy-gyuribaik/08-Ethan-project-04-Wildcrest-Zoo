@@ -804,7 +804,7 @@ local function sendToLobby(list, completed)
 	-- one teleport per player so each carries their own earnings back to the lobby bank
 	for _, p in list do
 		local options = Instance.new("TeleportOptions")
-		options:SetTeleportData({ Completed = completed, Earned = math.clamp(p:GetAttribute("RunCash") or 0, 0, Config.MaxEarnedPerRun or 2000), From = 4, Secret = p:GetAttribute("SecretEnding") and 4 or nil })
+		options:SetTeleportData({ Completed = completed, Earned = math.clamp(p:GetAttribute("RunCash") or 0, 0, Config.MaxEarnedPerRun or 2000), From = 4, Secret = p:GetAttribute("SecretEnding") and 4 or nil, Run = p:GetAttribute("RunStats") })
 		local ok, err = pcall(function()
 			TeleportService:TeleportAsync(PlaceIds.Lobby, { p }, options)
 		end)
@@ -823,6 +823,7 @@ function catchPlayer(m, player)
 	if st.hidden then
 		unhide(player, true)
 	end
+	player:SetAttribute("RunCaught", (player:GetAttribute("RunCaught") or 0) + 1)
 	if not st.infinite then
 		st.lives -= 1
 		player:SetAttribute("Lives", st.lives)
@@ -2103,6 +2104,15 @@ local function win()
 		return
 	end
 	round.ending = true
+	do -- achievements: how did this run go? (sent to the lobby)
+		local list = inGamePlayers()
+		local runSecs = math.floor(os.clock() - (round.startTime or os.clock()))
+		for _, pl in list do
+			task.spawn(pcall, function() game:GetService("BadgeService"):AwardBadge(pl.UserId, 3159763236067902) end) -- badge: beat this chapter
+			if round.difficulty == "Nightmare" then task.spawn(pcall, function() game:GetService("BadgeService"):AwardBadge(pl.UserId, 2559736740354104) end) end -- badge: beat it on Nightmare
+			pl:SetAttribute("RunStats", game:GetService("HttpService"):JSONEncode({ d = round.difficulty or "Normal", t = runSecs, n = #list, c = pl:GetAttribute("RunCaught") or 0, l = pl:GetAttribute("Lives") }))
+		end
+	end
 	local secretFound = workspace:GetAttribute("SecretFound") == true
 	if secretFound then
 		for _, p in inGamePlayers() do
@@ -2280,6 +2290,9 @@ local function resetWorld()
 	end
 end
 function round.resetRound()
+	for _, pl in game:GetService("Players"):GetPlayers() do
+		pl:SetAttribute("RunCaught", nil)
+	end
 	workspace:SetAttribute("SecretFound", nil)
 	round.id += 1
 	clearMonsters()

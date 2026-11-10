@@ -123,12 +123,12 @@ close.MouseButton1Click:Connect(function()
 	setOpen(false)
 end)
 local stall = workspace:WaitForChild("Lobby"):WaitForChild("ShopStall", 30)
-local pr = stall and stall:FindFirstChild("ShopPrompt", true)
-if pr then
-	pr.Triggered:Connect(function()
+-- listen for ANY shop prompt (works even if the stall loads in after this script starts)
+game:GetService("ProximityPromptService").PromptTriggered:Connect(function(prompt)
+	if prompt.Name == "ShopPrompt" then
 		setOpen(not win.Visible)
-	end)
-end
+	end
+end)
 UserInputService.InputBegan:Connect(function(input, processed)
 	if not processed and input.KeyCode == Enum.KeyCode.Escape and win.Visible then
 		setOpen(false)

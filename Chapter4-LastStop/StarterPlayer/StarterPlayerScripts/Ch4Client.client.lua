@@ -3,6 +3,28 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+-- PHONE BUTTONS send "virtual keys" through the same handlers as the keyboard
+local VKDown, VKUp = Instance.new("BindableEvent"), Instance.new("BindableEvent")
+local function onKeyDown(fn)
+	local a = UserInputService["InputBegan"]:Connect(fn)
+	local b = VKDown.Event:Connect(function(kc)
+		fn({ KeyCode = kc, UserInputType = Enum.UserInputType.Keyboard, UserInputState = Enum.UserInputState.Begin }, false)
+	end)
+	return { Disconnect = function()
+		a:Disconnect()
+		b:Disconnect()
+	end }
+end
+local function onKeyUp(fn)
+	local a = UserInputService["InputEnded"]:Connect(fn)
+	local b = VKUp.Event:Connect(function(kc)
+		fn({ KeyCode = kc, UserInputType = Enum.UserInputType.Keyboard, UserInputState = Enum.UserInputState.End }, false)
+	end)
+	return { Disconnect = function()
+		a:Disconnect()
+		b:Disconnect()
+	end }
+end
 local TweenService = game:GetService("TweenService")
 local Lighting = game:GetService("Lighting")
 local CollectionService = game:GetService("CollectionService")
@@ -242,7 +264,7 @@ glowNear.Brightness = 0.4
 glowNear.Color = Color3.fromRGB(255, 240, 215)
 glowNear.Parent = flashRig
 RunService:BindToRenderStep("FlashlightFollow", Enum.RenderPriority.Camera.Value + 5, function()
-	flashRig.CFrame = camera.CFrame * CFrame.new(0.6, -0.5, -0.4)
+	flashRig.CFrame = camera.CFrame * CFrame.new(0.15, -0.25, 0) -- close to the eyes so it never ends up inside a wall
 end)
 local FLASH_SKINS = { [""] = Color3.fromRGB(255, 244, 220), ice = Color3.fromRGB(170, 220, 255), uv = Color3.fromRGB(190, 120, 255), red = Color3.fromRGB(255, 110, 100) }
 local function applyFlashUpgrades()
@@ -293,7 +315,7 @@ RunService.Heartbeat:Connect(function(dt)
 		remotes.State:FireServer({ Sprinting = sprinting, Moving = moving, Flashlight = flashlightOn })
 	end
 end)
-UserInputService.InputBegan:Connect(function(input, processed)
+onKeyDown(function(input, processed)
 	if input.KeyCode == Enum.KeyCode.LeftShift then
 		sprintHeld = true
 	end
@@ -314,7 +336,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		end
 	end
 end)
-UserInputService.InputEnded:Connect(function(input)
+onKeyUp(function(input)
 	if input.KeyCode == Enum.KeyCode.LeftShift then
 		sprintHeld = false
 	end
@@ -464,7 +486,7 @@ function games.swipe()
 			end
 		end
 	end))
-	table.insert(mgConns, UserInputService.InputEnded:Connect(function(input)
+	table.insert(mgConns, onKeyUp(function(input)
 		if dragging and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
 			dragging = false
 			card.Position = UDim2.new(0, 5, 0, 5)
@@ -578,7 +600,7 @@ function games.lockpick(data)
 	local clicker = btn(mgArea, "", UDim2.fromScale(1, 1), UDim2.new(), Color3.new(), 41)
 	clicker.BackgroundTransparency = 1
 	clicker.MouseButton1Click:Connect(press)
-	table.insert(mgConns, UserInputService.InputBegan:Connect(function(input)
+	table.insert(mgConns, onKeyDown(function(input)
 		if input.KeyCode == Enum.KeyCode.Space then
 			press()
 		end
@@ -775,7 +797,7 @@ function games.generator(data)
 	local clicker = btn(mgArea, "", UDim2.fromScale(1, 1), UDim2.new(), Color3.new(), 41)
 	clicker.BackgroundTransparency = 1
 	clicker.MouseButton1Click:Connect(pull)
-	table.insert(mgConns, UserInputService.InputBegan:Connect(function(input)
+	table.insert(mgConns, onKeyDown(function(input)
 		if input.KeyCode == Enum.KeyCode.Space then pull() end
 	end))
 end
@@ -1267,7 +1289,7 @@ end)
 local cutscenes = {}
 local gcfg = Config.Monsters.Guard.Anim
 local mcfg = Config.Monsters.Marsh.Anim
-local function flashlightOn(act)
+local function guardFlashlight(act)
 	if not act then
 		return
 	end
@@ -1287,7 +1309,7 @@ function cutscenes.raid(args)
 	for i, p in { Vector3.new(-18.5, F12, 1.2), Vector3.new(-21, F12, 2.4), Vector3.new(-16, F12, 2.4) } do
 		local g = makeActor(views:FindFirstChild("Guard"), p, Vector3.new(-18.5, F12, -6))
 		actorBase(g, gcfg.idle, 1)
-		flashlightOn(g)
+		guardFlashlight(g)
 		guards[i] = g
 	end
 	local banged, gestured = {}, false
@@ -1329,7 +1351,7 @@ function cutscenes.swat(args)
 		path1[i] = Vector3.new(29.5 + (i - 1) * 1.6, F10 - 3.5, 12 + (i - 1) * 1.5)
 		local g = makeActor(views:FindFirstChild("Guard"), path0[i], path1[i])
 		actorBase(g, gcfg.run, 0.9)
-		flashlightOn(g)
+		guardFlashlight(g)
 		guards[i] = g
 	end
 	timeline(8, {
@@ -1943,7 +1965,7 @@ do
 	local dia = frame(bb, { Size = UDim2.fromOffset(12, 12), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, 0), Rotation = 45, BackgroundColor3 = Color3.fromRGB(255, 210, 110) })
 	local txt = label(bb, { Size = UDim2.new(1, 0, 0, 26), Position = UDim2.fromOffset(0, 18), Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = Color3.fromRGB(255, 225, 160) })
 	local hint = label(gui, { Size = UDim2.fromOffset(170, 18), Position = UDim2.new(1, -194, 0, 76), TextSize = 13, TextColor3 = Color3.fromRGB(170, 170, 170), Text = "Objective marker [H]", TextXAlignment = Enum.TextXAlignment.Right })
-	UserInputService.InputBegan:Connect(function(input, processed)
+	onKeyDown(function(input, processed)
 		if not processed and input.KeyCode == Enum.KeyCode.H then
 			on = not on
 			hint.Text = on and "Objective marker [H]" or "Marker hidden [H]"
@@ -2288,7 +2310,7 @@ end
 -- FIRST PERSON: free the mouse whenever something needs clicking (minigames, notes, menus) or M is toggled
 do
 	local freeMouse = false
-	UserInputService.InputBegan:Connect(function(input, processed)
+	onKeyDown(function(input, processed)
 		if not processed and input.KeyCode == Enum.KeyCode.M then
 			freeMouse = not freeMouse
 		end
@@ -2322,7 +2344,7 @@ do
 			senseLabel.Text = "SIXTH SENSE [R]: ready"
 		end
 	end
-	UserInputService.InputBegan:Connect(function(input, processed)
+	onKeyDown(function(input, processed)
 		if processed or input.KeyCode ~= Enum.KeyCode.R or not player:GetAttribute("Up_Sixth") or os.clock() < readyAt or cutscenePlaying then
 			return
 		end
@@ -2350,4 +2372,68 @@ do
 		end)
 	end)
 	RunService.Heartbeat:Connect(refreshSense)
+end
+
+-- PHONE / TABLET BUTTONS (minigames already have their own on-screen buttons)
+if UserInputService.TouchEnabled then
+	local tg = Instance.new("ScreenGui")
+	tg.Name = "TouchButtons"
+	tg.ResetOnSpawn = false
+	tg.DisplayOrder = 30
+	tg.Parent = player:WaitForChild("PlayerGui")
+	local function tbtn(text, pos, color)
+		local b = Instance.new("TextButton")
+		b.Size = UDim2.fromOffset(84, 50)
+		b.Position = pos
+		b.BackgroundColor3 = color or Color3.fromRGB(30, 30, 36)
+		b.BackgroundTransparency = 0.3
+		b.TextColor3 = Color3.new(1, 1, 1)
+		b.Font = Enum.Font.GothamBold
+		b.TextSize = 15
+		b.Text = text
+		b.Parent = tg
+		Instance.new("UICorner", b)
+		return b
+	end
+	local function tap(kc)
+		VKDown:Fire(kc)
+		task.defer(function()
+			VKUp:Fire(kc)
+		end)
+	end
+	local light = tbtn("LIGHT", UDim2.new(1, -196, 1, -214))
+	light.Activated:Connect(function()
+		tap(Enum.KeyCode.F)
+	end)
+	local sprint = tbtn("SPRINT", UDim2.new(1, -196, 1, -156))
+	local sprinting = false
+	sprint.Activated:Connect(function()
+		sprinting = not sprinting
+		if sprinting then
+			VKDown:Fire(Enum.KeyCode.LeftShift)
+		else
+			VKUp:Fire(Enum.KeyCode.LeftShift)
+		end
+		sprint.BackgroundColor3 = sprinting and Color3.fromRGB(40, 90, 140) or Color3.fromRGB(30, 30, 36)
+	end)
+	local stun = tbtn("STUN", UDim2.new(1, -196, 1, -272), Color3.fromRGB(30, 60, 100))
+	stun.Activated:Connect(function()
+		tap(Enum.KeyCode.Q)
+	end)
+	local sense = tbtn("SENSE", UDim2.new(1, -288, 1, -272), Color3.fromRGB(80, 40, 110))
+	sense.Activated:Connect(function()
+		tap(Enum.KeyCode.R)
+	end)
+	local leave = tbtn("LEAVE", UDim2.new(1, -288, 1, -214), Color3.fromRGB(110, 80, 30))
+	leave.Activated:Connect(function()
+		tap(Enum.KeyCode.E)
+	end)
+	RunService.Heartbeat:Connect(function()
+		local free = not minigameOpen and not cutscenePlaying
+		light.Visible = free
+		sprint.Visible = free
+		stun.Visible = free and player:GetAttribute("HasStunner") == true
+		sense.Visible = free and player:GetAttribute("Up_Sixth") == true
+		leave.Visible = free and player:GetAttribute("Hidden") == true
+	end)
 end

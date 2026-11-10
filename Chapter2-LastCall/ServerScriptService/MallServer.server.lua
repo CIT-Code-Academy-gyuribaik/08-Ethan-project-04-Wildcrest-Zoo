@@ -1592,7 +1592,7 @@ local function sendToLobby(list, completedChapter)
 			local earned = math.clamp((p:GetAttribute("Cash") or 0) - (p:GetAttribute("CashAtJoin") or (p:GetAttribute("Cash") or 0)), 0, 2000)
 			local ok1, err1 = pcall(function()
 				local options = Instance.new("TeleportOptions")
-				options:SetTeleportData({ Completed = completedChapter, Earned = earned, From = 2, Secret = p:GetAttribute("SecretEnding") and 2 or nil })
+				options:SetTeleportData({ Completed = completedChapter, Earned = earned, From = 2, Secret = p:GetAttribute("SecretEnding") and 2 or nil, Run = p:GetAttribute("RunStats") })
 				TeleportService:TeleportAsync(PlaceIds.Lobby, { p }, options)
 			end)
 			if not ok1 then
@@ -1638,6 +1638,7 @@ function catchPlayer(m, player)
 		round.spawnBait()
 		Notify:FireClient(player, "You dropped the bait - it's back in the freezer.")
 	end
+	player:SetAttribute("RunCaught", (player:GetAttribute("RunCaught") or 0) + 1)
 	if not st.infinite then
 		st.lives -= 1
 		player:SetAttribute("Lives", st.lives)
@@ -1705,6 +1706,15 @@ local function win()
 		return
 	end
 	round.ending = true
+	do -- achievements: how did this run go? (sent to the lobby)
+		local list = inGamePlayers()
+		local runSecs = math.floor(os.clock() - (round.startTime or os.clock()))
+		for _, pl in list do
+			task.spawn(pcall, function() game:GetService("BadgeService"):AwardBadge(pl.UserId, 2493502424080087) end) -- badge: beat this chapter
+			if round.difficulty == "Nightmare" then task.spawn(pcall, function() game:GetService("BadgeService"):AwardBadge(pl.UserId, 2278584857275628) end) end -- badge: beat it on Nightmare
+			pl:SetAttribute("RunStats", game:GetService("HttpService"):JSONEncode({ d = round.difficulty or "Normal", t = runSecs, n = #list, c = pl:GetAttribute("RunCaught") or 0, l = pl:GetAttribute("Lives") }))
+		end
+	end
 	local secretFound = workspace:GetAttribute("SecretFound") == true
 	if secretFound then
 		for _, p in inGamePlayers() do
@@ -1809,6 +1819,7 @@ ChokeRemote.OnServerEvent:Connect(function(player, ok)
 		round.crash()
 		return
 	end
+	player:SetAttribute("RunCaught", (player:GetAttribute("RunCaught") or 0) + 1)
 	if not st.infinite then
 		st.lives -= 1
 		player:SetAttribute("Lives", st.lives)
@@ -2136,6 +2147,9 @@ end)
 
 -- Round setup ---------------------------------------------------------------------------------------
 function resetRound()
+	for _, pl in game:GetService("Players"):GetPlayers() do
+		pl:SetAttribute("RunCaught", nil)
+	end
 	workspace:SetAttribute("SecretFound", nil)
 	round.active = false
 	round.ending = false

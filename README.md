@@ -55,6 +55,17 @@ and you win, a secret cutscene plays after the normal ending: the Director in hi
 room, then a map of the island (a tease for Chapter 5). +$150, and the lobby tracks
 **SECRET ENDINGS x/4** (`SecretEnding.server.lua` + `SecretEndingClient.client.lua` in each chapter).
 
+## Achievements, badges and more
+
+- **32 achievements** (lobby `AchievementList`): beat chapters, harder difficulties, no-catch and speed runs,
+  party size, secret endings, shop collections. Each pays cash; chapters send run stats (`RunStats`) to the lobby.
+- **Roblox badges:** Hired! and Founder in the lobby, a "beat it" and a "beat it on Nightmare" badge in every
+  chapter (plus lobby copies of the chapter badges, given from the achievements).
+- **Daily reward** ($50, up to $200 for a 7-day streak) and a **FASTEST ESCAPES** board in the lobby (OrderedDataStores).
+- **Settings** (press **O**): brightness, mouse sensitivity, volume. Saved in the lobby and carried into chapters.
+- **Phone buttons** in every chapter (Ch 3 and 4 route them through the keyboard handlers).
+- Joining a chapter directly (not from a lobby van) sends you to the lobby first.
+
 ## Script layout
 
 Paths mirror where each script lives in Roblox Studio:
